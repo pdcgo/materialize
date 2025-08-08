@@ -1,0 +1,28 @@
+
+services:
+  # materialized:
+  #   image: materialize/materialized:latest
+  #   ports:
+  #     - "6876:6876"
+  #     - "6875:6875"
+  #     - "6874:6874"
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c wal_level=logical
+        -c max_wal_senders=10
+        -c max_replication_slots=10
+        -c max_connections=100
+        -c log_statement=all

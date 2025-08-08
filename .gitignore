@@ -1,0 +1,9 @@
+dist/
+data
+data_backup
+*.exe
+.terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
