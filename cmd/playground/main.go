@@ -47,16 +47,25 @@ func main() {
 	}
 
 	cdataChan := make(chan *stat_replica.CdcMessage, 9)
-	source := NewCDCStream(ctx, &backfill.BackfillConfig{
-		StartTime: time.Now().AddDate(0, -1, 0),
-	}, cdataChan)
+	repcfg := &stat_replica.ReplicationConfig{
+		SlotName:        "stat_slot",
+		PublicationName: "stat_publication",
+		SlotTemporary:   true,
+	}
+	source := NewCDCStream(ctx,
+		&backfill.BackfillConfig{
+			StartTime: time.Now().AddDate(0, -1, 0),
+		},
+		repcfg,
+		cdataChan,
+	)
 
 	go func() {
 		defer close(cdataChan)
 		err = source.
 			Init().
 			Backfill().
-			Stream(true).
+			Stream().
 			Err()
 
 		if err != nil {

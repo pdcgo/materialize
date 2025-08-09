@@ -13,11 +13,12 @@ type CDCStream interface {
 	AddTearDown(handle func()) CDCStream
 	Close()
 	Backfill() CDCStream
-	Stream(slotTemporary bool) CDCStream
+	Stream() CDCStream
 	Err() error
 }
 
 type cdcStreamImpl struct {
+	repcfg    *stat_replica.ReplicationConfig
 	cfg       *backfill.BackfillConfig
 	ctx       context.Context
 	cdataChan chan *stat_replica.CdcMessage
@@ -114,7 +115,7 @@ func (c *cdcStreamImpl) Init() CDCStream {
 }
 
 // Stream implements CDCStream.
-func (c *cdcStreamImpl) Stream(slotTemporary bool) CDCStream {
+func (c *cdcStreamImpl) Stream() CDCStream {
 	slog.Info("starting replication streaming")
 	var err error
 
@@ -126,16 +127,16 @@ func (c *cdcStreamImpl) Stream(slotTemporary bool) CDCStream {
 	defer conn.Close(c.ctx)
 
 	// Initialize Replication
-	initrep := stat_replica.NewInitReplica(c.ctx, conn)
+	initrep := stat_replica.NewInitReplica(c.ctx, conn, c.repcfg)
 	err = initrep.
-		Initialize(slotTemporary).
+		Initialize(c.repcfg.SlotTemporary).
 		Err()
 
 	if err != nil {
 		c.setErr(err)
 	}
 
-	replication := stat_replica.NewReplication(c.ctx, conn)
+	replication := stat_replica.NewReplication(c.ctx, conn, c.repcfg)
 	replication.AddHandler(func(msg *stat_replica.CdcMessage) {
 		if msg == nil {
 			return
@@ -157,8 +158,9 @@ func (c *cdcStreamImpl) Stream(slotTemporary bool) CDCStream {
 	return c
 }
 
-func NewCDCStream(ctx context.Context, cfg *backfill.BackfillConfig, cdataChan chan *stat_replica.CdcMessage) CDCStream {
+func NewCDCStream(ctx context.Context, cfg *backfill.BackfillConfig, repcfg *stat_replica.ReplicationConfig, cdataChan chan *stat_replica.CdcMessage) CDCStream {
 	return &cdcStreamImpl{
+		repcfg:    repcfg,
 		ctx:       ctx,
 		cfg:       cfg,
 		cdataChan: cdataChan,

@@ -12,6 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ReplicationConfig struct {
+	SlotName        string
+	SlotTemporary   bool
+	PublicationName string
+}
+
 type ReplicationHandler func(msg *CdcMessage)
 
 type Replication interface {
@@ -21,6 +27,7 @@ type Replication interface {
 }
 
 type replicationImpl struct {
+	cfg     *ReplicationConfig
 	logfile string
 	ctx     context.Context
 	conn    *pgconn.PgConn
@@ -46,7 +53,7 @@ func (r *replicationImpl) Start() error {
 
 	pluginArguments = []string{
 		"proto_version '2'",
-		fmt.Sprintf("publication_names '%s'", PUB_NAME),
+		fmt.Sprintf("publication_names '%s'", r.cfg.PublicationName),
 		"messages 'true'",
 		"streaming 'true'",
 	}
@@ -56,7 +63,7 @@ func (r *replicationImpl) Start() error {
 	// 	return err
 	// }
 	start := pglogrepl.LSN(0)
-	err = pglogrepl.StartReplication(r.ctx, r.conn, SLOT_NAME, start, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
+	err = pglogrepl.StartReplication(r.ctx, r.conn, r.cfg.SlotName, start, pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments})
 	if err != nil {
 		return err
 	}
@@ -142,9 +149,10 @@ func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interfa
 	return string(data), nil
 }
 
-func NewReplication(ctx context.Context, conn *pgconn.PgConn) Replication {
+func NewReplication(ctx context.Context, conn *pgconn.PgConn, cfg *ReplicationConfig) Replication {
 	parser := NewV2Parser(ctx)
 	return &replicationImpl{
+		cfg:     cfg,
 		ctx:     ctx,
 		conn:    conn,
 		handler: func(msg *CdcMessage) {},

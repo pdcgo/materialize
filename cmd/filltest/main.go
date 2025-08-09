@@ -215,7 +215,10 @@ func runReplica(ctx context.Context, cdcChan chan<- *stat_replica.CdcMessage) {
 	defer conn.Close(ctx)
 
 	// Initialize Replication
-	initrep := stat_replica.NewInitReplica(ctx, conn)
+	initrep := stat_replica.NewInitReplica(ctx, conn, &stat_replica.ReplicationConfig{
+		SlotName:        "stat_slot",
+		PublicationName: "stat_publication",
+	})
 	err = initrep.
 		Initialize(true).
 		Err()
@@ -223,7 +226,10 @@ func runReplica(ctx context.Context, cdcChan chan<- *stat_replica.CdcMessage) {
 	if err != nil {
 		panic(err)
 	}
-	replication := stat_replica.NewReplication(ctx, conn)
+	replication := stat_replica.NewReplication(ctx, conn, &stat_replica.ReplicationConfig{
+		SlotName:        "stat_slot",
+		PublicationName: "stat_publication",
+	})
 
 	replication.AddHandler(func(msg *stat_replica.CdcMessage) {
 		if msg == nil {

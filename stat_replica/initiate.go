@@ -10,6 +10,7 @@ import (
 )
 
 type InitReplica struct {
+	cfg  *ReplicationConfig
 	ctx  context.Context
 	conn *pgconn.PgConn
 	err  error
@@ -17,13 +18,13 @@ type InitReplica struct {
 
 func (i *InitReplica) Initialize(slotTemporary bool) *InitReplica {
 	slog.Info("check publication")
-	exist, err := i.publicationExist(PUB_NAME)
+	exist, err := i.publicationExist(i.cfg.PublicationName)
 	if err != nil {
 		return i.setErr(err)
 	}
 	if !exist {
-		slog.Info("create publication", slog.String("pubname", PUB_NAME))
-		err = i.createPublication(PUB_NAME)
+		slog.Info("create publication", slog.String("pubname", i.cfg.PublicationName))
+		err = i.createPublication(i.cfg.PublicationName)
 		if err != nil {
 			return i.setErr(err)
 		}
@@ -31,14 +32,14 @@ func (i *InitReplica) Initialize(slotTemporary bool) *InitReplica {
 	}
 
 	slog.Info("check slot")
-	exist, err = i.slotExist(SLOT_NAME)
+	exist, err = i.slotExist(i.cfg.SlotName)
 	if err != nil {
 		return i.setErr(err)
 	}
 
 	if !exist {
-		slog.Info("create slot", slog.String("slotname", SLOT_NAME))
-		err = i.createSlot(SLOT_NAME, slotTemporary)
+		slog.Info("create slot", slog.String("slotname", i.cfg.SlotName))
+		err = i.createSlot(i.cfg.SlotName, slotTemporary)
 		if err != nil {
 			return i.setErr(err)
 		}
@@ -50,13 +51,13 @@ func (i *InitReplica) Initialize(slotTemporary bool) *InitReplica {
 
 func (i *InitReplica) Clear() *InitReplica {
 	slog.Info("delete publication")
-	exist, err := i.publicationExist(PUB_NAME)
+	exist, err := i.publicationExist(i.cfg.PublicationName)
 	if err != nil {
 		return i.setErr(err)
 	}
 	if exist {
-		slog.Info("delete publication", slog.String("pubname", PUB_NAME))
-		err = i.deletePublication(PUB_NAME)
+		slog.Info("delete publication", slog.String("pubname", i.cfg.PublicationName))
+		err = i.deletePublication(i.cfg.PublicationName)
 		if err != nil {
 			return i.setErr(err)
 		}
@@ -64,14 +65,14 @@ func (i *InitReplica) Clear() *InitReplica {
 	}
 
 	slog.Info("delete slot")
-	exist, err = i.slotExist(SLOT_NAME)
+	exist, err = i.slotExist(i.cfg.SlotName)
 	if err != nil {
 		return i.setErr(err)
 	}
 
 	if exist {
-		slog.Info("delete slot", slog.String("slotname", SLOT_NAME))
-		err = i.deleteSlot(SLOT_NAME)
+		slog.Info("delete slot", slog.String("slotname", i.cfg.SlotName))
+		err = i.deleteSlot(i.cfg.SlotName)
 		if err != nil {
 			return i.setErr(err)
 		}
@@ -190,8 +191,9 @@ func (i *InitReplica) Err() error {
 	return i.err
 }
 
-func NewInitReplica(ctx context.Context, conn *pgconn.PgConn) *InitReplica {
+func NewInitReplica(ctx context.Context, conn *pgconn.PgConn, cfg *ReplicationConfig) *InitReplica {
 	return &InitReplica{
+		cfg:  cfg,
 		ctx:  ctx,
 		conn: conn,
 	}
