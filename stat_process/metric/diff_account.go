@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
+	"github.com/pdcgo/materialize/stat_process/models"
 	"github.com/pdcgo/materialize/stat_replica"
 )
 
@@ -40,15 +40,11 @@ type diffAccountCalcImpl struct {
 
 func (d *diffAccountCalcImpl) ProcessCDC(cdata *stat_replica.CdcMessage) ([]*DiffChangeAccount, error) {
 	var err error
-	data := cdata.Data.(map[string]interface{})
-	n := data["at"].(time.Time)
+	data := cdata.Data.(*models.BalanceAccountHistory)
+	n := data.At
 
-	accountID := uint(data["account_id"].(int64))
-	amountD := data["amount"].(pgtype.Numeric)
-	amount, err := amountD.Float64Value()
-	if err != nil {
-		return nil, err
-	}
+	accountID := data.AccountID
+	amount := data.Amount
 
 	teamID, typeID, err := d.getTeamID(accountID)
 	if err != nil {
@@ -66,7 +62,7 @@ func (d *diffAccountCalcImpl) ProcessCDC(cdata *stat_replica.CdcMessage) ([]*Dif
 		Day:       n.Format("2006-01-02"),
 		AccountID: accountID,
 		TeamID:    teamID,
-		Amount:    amount.Float64,
+		Amount:    amount,
 	}
 	var old *DiffAccount
 
@@ -163,20 +159,11 @@ func (d *diffAccountCalcImpl) Save(exact exact_one.ExactlyOnce, acc *DiffAccount
 }
 
 func (d *diffAccountCalcImpl) getTeamID(accountID uint) (uint, uint, error) {
-	var teamID uint
-	var typeID uint
-	meta := stat_replica.SourceMetadata{
-		Table:  "expense_accounts",
-		Schema: "public",
+	account := &models.ExpenseAccount{
+		ID: accountID,
 	}
-	key := fmt.Sprintf("%s%d", meta.PrefixKey(), accountID)
-	acc, err := d.exactOne.GetItem(key)
-	if err != nil {
-		return teamID, typeID, err
-	}
-	teamID = uint(acc["team_id"].(float64))
-	typeID = uint(acc["account_type_id"].(float64))
-	return teamID, typeID, err
+	_, err := d.exactOne.GetItemStruct(account)
+	return account.TeamID, account.AccountTypeID, err
 }
 
 var ErrStopIterate = errors.New("stop iterate")

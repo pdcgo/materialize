@@ -125,7 +125,7 @@ func main() {
 	err = yenstream.
 		NewRunnerContext(ctx).
 		CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
-			source := yenstream.NewChannelSource(ctx, cdataChan)
+			source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
 
 			exactone := source.
 				Via("exact_one", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -143,6 +143,15 @@ func main() {
 						"product_category":
 						return false, nil
 
+					case "expense_accounts":
+						data := cdata.Data.(*models.ExpenseAccount)
+						err = exact.
+							Change(data).
+							Save().
+							Err()
+
+						return false, err
+
 					case "teams":
 						data := cdata.Data.(*models.Team)
 						err = exact.
@@ -152,6 +161,13 @@ func main() {
 
 						return false, err
 
+					case "balance_account_histories":
+						// data := cdata.Data.(*models.BalanceAccountHistory)
+						// err = exact.
+						// 	Change(data).
+						// 	Save().
+						// 	Err()
+						return true, nil
 					default:
 						ok, err = exact.AddItemWithKey("id", cdata)
 						return ok, err
@@ -353,6 +369,8 @@ func main() {
 
 					diffs, err := difCalc.ProcessCDC(cdata)
 					if err != nil {
+						raw, _ := json.Marshal(cdata)
+						log.Println(string(raw))
 						panic(err)
 					}
 					for _, diff := range diffs {
