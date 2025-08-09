@@ -2,14 +2,21 @@ package gathering
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
+	"os"
+	"reflect"
 	"time"
 
 	"github.com/pdcgo/materialize/stat_process/metric"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+type CanFressness interface {
+	SetFreshness(n time.Time)
+}
 
 type postgresGatherImpl struct {
 	ctx     context.Context
@@ -25,7 +32,17 @@ func (p *postgresGatherImpl) AddMetric(key string, metric metric.MetricFlush) {
 }
 
 func (p *postgresGatherImpl) StartSync() error {
-	dsn := "host=localhost user=user password=password dbname=postgres port=5432 sslmode=disable TimeZone=Asia/Jakarta"
+	host := getEnv("STAT_POSTGRES_HOST", "localhost")
+	user := getEnv("STAT_POSTGRES_USER", "user")
+	pass := getEnv("STAT_POSTGRES_PASSWORD", "password")
+	dbname := getEnv("STAT_POSTGRES_DB", "postgres")
+
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable TimeZone=Asia/Jakarta",
+		host,
+		user,
+		pass,
+		dbname,
+	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -44,7 +61,13 @@ func (p *postgresGatherImpl) StartSync() error {
 			// slog.Info("running sync", slog.String("gather", "postgres gather"))
 			for key, met := range p.metrics {
 				err = met.FlushCallback(func(acc any) error {
-					return db.Save(acc).Error
+					facc, ok := acc.(CanFressness)
+					if !ok {
+						name := reflect.TypeOf(acc).Elem().Name()
+						return fmt.Errorf("item doesnt implement freshness %s", name)
+					}
+					facc.SetFreshness(time.Now().Local())
+					return db.Save(facc).Error
 				})
 
 				if err != nil {
@@ -65,4 +88,11 @@ func NewPostgresGather(ctx context.Context) *postgresGatherImpl {
 		ctx:     ctx,
 		metrics: map[string]metric.MetricFlush{},
 	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
 }

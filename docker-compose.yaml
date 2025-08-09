@@ -7,6 +7,23 @@ services:
   #     - "6875:6875"
   #     - "6874:6874"
 
+  streamstat:
+    image: asia-southeast2-docker.pkg.dev/pdcgudang/statrepo/streamstat:latest
+    container_name: streamstat
+    pull_policy: always
+    restart: always
+    environment:
+      STAT_POSTGRES_USER: user
+      STAT_POSTGRES_PASSWORD: password
+      STAT_POSTGRES_DB: postgres
+      STAT_POSTGRES_HOST: postgres
+      GOOGLE_APPLICATION_CREDENTIALS: ./streamdata/credential.json
+      GOOGLE_CLOUD_PROJECT: pdcgudang
+    volumes:
+      - ./streamdata:/root/streamdata
+    depends_on:
+      - postgres
+
   postgres:
     image: postgres:15
     container_name: postgres

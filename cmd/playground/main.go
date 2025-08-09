@@ -23,9 +23,15 @@ import (
 	"github.com/pdcgo/shared/yenstream"
 )
 
+func initializeDirectory() {
+	os.Mkdir("./streamdata/", os.ModeDir)
+}
+
 func main() {
 	var err error
 	var cancel context.CancelFunc
+
+	initializeDirectory()
 
 	ctx := context.Background()
 	ctx, cancel = context.WithCancel(ctx)
@@ -74,7 +80,7 @@ func main() {
 
 	}()
 
-	badgedb, err := stat_db.NewBadgeDB("/tmp/test")
+	badgedb, err := stat_db.NewBadgeDB("./streamdata/replication")
 	if err != nil {
 		panic(err)
 	}
@@ -407,7 +413,7 @@ func main() {
 		return datas[i].Day > datas[j].Day
 	})
 	// var _ CsvItem = (*metric.DailyShopeepayBalance)(nil)
-	err = SaveCsv("shopeepay_30day.csv", datas)
+	err = SaveCsv("./streamdata/shopeepay_30day.csv", datas)
 	if err != nil {
 		panic(err)
 	}

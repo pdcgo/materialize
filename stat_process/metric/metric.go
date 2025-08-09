@@ -11,7 +11,6 @@ import (
 type MetricData interface {
 	Key() string
 }
-
 type MetricFlush interface {
 	Flush(toChan chan any)
 	FlushCallback(handle func(acc any) error) error

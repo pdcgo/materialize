@@ -7,7 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
+	"regexp"
 
 	"cloud.google.com/go/cloudsqlconn"
 	"github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/proxy"
@@ -33,7 +33,7 @@ func ConnectProdDatabase(ctx context.Context) (*pgconn.PgConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Database.DBInstance = "/cloudsql/" + cfg.Database.DBInstance
+	// cfg.Database.DBInstance = "'/cloudsql/" + cfg.Database.DBInstance + "'"
 	dsn := cfg.Database.ToDsn("stat_streaming")
 	dsn += " replication=database"
 
@@ -42,13 +42,16 @@ func ConnectProdDatabase(ctx context.Context) (*pgconn.PgConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	dbconf.LookupFunc = func(ctx context.Context, host string) (addrs []string, err error) {
+		return []string{host}, nil
+	}
 	dbconf.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		matches := strings.Split(addr, `\`)
-		if len(matches) <= 2 {
-			return nil, fmt.Errorf("failed to parse addr: %q. It should conform to the regular expression", addr)
+		re := regexp.MustCompile(`\[(.*?)\]`)
+		match := re.FindStringSubmatch(addr)
+		if len(match) <= 1 {
+			return nil, fmt.Errorf("statreplica error dialing %s to %s", network, addr)
 		}
-		instance := matches[2]
-		return proxy.Dial(instance)
+		return proxy.Dial(match[1])
 	}
 
 	conn, err := pgconn.ConnectConfig(ctx, dbconf)

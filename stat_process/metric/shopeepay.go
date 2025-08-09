@@ -1,19 +1,27 @@
 package metric
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // var _ MetricData = (*DailyShopeePayBalance)(nil)
 
 type DailyShopeepayBalance struct {
-	Day              string  `json:"day" gorm:"primaryKey"`
-	TeamID           uint    `json:"team_id" gorm:"primaryKey"`
-	TeamName         string  `json:"team_name"`
-	DiffAmount       float64 `json:"diff_amount"`
-	ErrDiffAmount    float64 `json:"err_diff_amount"`
-	ActualDiffAmount float64 `json:"actual_diff_amount"`
-	RefundAmount     float64 `json:"refund_amount"`
-	CostAmount       float64 `json:"cost_amount"`
-	TopupAmount      float64 `json:"topup_amount"`
+	Day              string    `json:"day" gorm:"primaryKey"`
+	TeamID           uint      `json:"team_id" gorm:"primaryKey"`
+	TeamName         string    `json:"team_name"`
+	DiffAmount       float64   `json:"diff_amount"`
+	ErrDiffAmount    float64   `json:"err_diff_amount"`
+	ActualDiffAmount float64   `json:"actual_diff_amount"`
+	RefundAmount     float64   `json:"refund_amount"`
+	CostAmount       float64   `json:"cost_amount"`
+	TopupAmount      float64   `json:"topup_amount"`
+	Freshness        time.Time `json:"-"`
+}
+
+func (d *DailyShopeepayBalance) SetFreshness(n time.Time) {
+	d.Freshness = n
 }
 
 // CsvData implements main.CsvItem.
