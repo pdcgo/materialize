@@ -57,9 +57,9 @@ func TestSaveExactOneBefore(t *testing.T) {
 				save := exact.Change(&new)
 
 				before := Told{}
-
+				var found bool
 				err = save.
-					Before(&before).
+					Before(&found, &before).
 					Save().
 					Err()
 

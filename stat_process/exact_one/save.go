@@ -9,7 +9,7 @@ import (
 
 type ChangeExactOne interface {
 	Exist(exist *bool) ChangeExactOne
-	Before(data ExactHaveKey) ChangeExactOne
+	Before(found *bool, data ExactHaveKey) ChangeExactOne
 	Save() ChangeExactOne
 	Delete() ChangeExactOne
 	Err() error
@@ -48,7 +48,7 @@ func (s *saveExactOneImpl) Exist(exist *bool) ChangeExactOne {
 }
 
 // Before implements SaveExactOne.
-func (s *saveExactOneImpl) Before(data ExactHaveKey) ChangeExactOne {
+func (s *saveExactOneImpl) Before(found *bool, data ExactHaveKey) ChangeExactOne {
 	var err error
 	item, err := s.txn.Get([]byte(s.newd.Key()))
 	if err != nil {
@@ -63,6 +63,7 @@ func (s *saveExactOneImpl) Before(data ExactHaveKey) ChangeExactOne {
 	}
 
 	err = json.Unmarshal(val, data)
+	*found = true
 	return s.setErr(err)
 }
 

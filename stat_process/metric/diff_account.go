@@ -147,8 +147,9 @@ func (d *diffAccountCalcImpl) Save(exact exact_one.ExactlyOnce, acc *DiffAccount
 	old := DiffAccount{}
 
 	saver := exact.Change(acc)
+	var found bool
 	err := saver.
-		Before(&old).
+		Before(&found, &old).
 		Save().
 		Err()
 

@@ -41,5 +41,21 @@ func registerCoder(ctx context.Context) error {
 			Meta:  &stat_replica.SourceMetadata{Table: "balance_account_histories", Schema: "public"},
 			Coder: &models.BalanceAccountHistory{},
 		},
+		&stat_replica.CoderReg{
+			Meta:  &stat_replica.SourceMetadata{Table: "orders", Schema: "public"},
+			Coder: &models.Order{},
+		},
+		&stat_replica.CoderReg{
+			Meta:  &stat_replica.SourceMetadata{Table: "marketplaces", Schema: "public"},
+			Coder: &models.Marketplace{},
+		},
+		&stat_replica.CoderReg{
+			Meta:  &stat_replica.SourceMetadata{Table: "order_adjustments", Schema: "public"},
+			Coder: &models.OrderAdjustment{},
+		},
+		&stat_replica.CoderReg{
+			Meta:  &stat_replica.SourceMetadata{Table: "order_timestamps", Schema: "public"},
+			Coder: &models.OrderTimestamp{},
+		},
 	)
 }

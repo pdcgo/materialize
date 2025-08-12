@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
@@ -20,6 +21,7 @@ type ExactlyOnce interface {
 	Transaction(update bool, handle func(exact ExactlyOnce) error) error
 	GetItemStructKey(key string, data ExactHaveKey) (bool, error)
 	GetItemStruct(data ExactHaveKey) (bool, error)
+	GetItemStructUntilExist(ctx context.Context, data ExactHaveKey) (bool, error)
 	SaveItemStruct(data ...ExactHaveKey) error
 
 	AddItemWithKey(pKey string, cdata *stat_replica.CdcMessage) (bool, error)
@@ -30,6 +32,25 @@ type exactOneImpl struct {
 	ctx context.Context
 	db  *badger.DB
 	tx  *badger.Txn
+}
+
+// GetItemStructUntilExist implements ExactlyOnce.
+func (e *exactOneImpl) GetItemStructUntilExist(ctx context.Context, data ExactHaveKey) (bool, error) {
+	var found bool
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			return found, err
+		default:
+			found, err = e.GetItemStruct(data)
+			if found {
+				return found, err
+			}
+			slog.Info("waiting data exist", slog.String("key", data.Key()))
+			time.Sleep(time.Second)
+		}
+	}
 }
 
 // Save implements ExactlyOnce.

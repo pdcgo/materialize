@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pdcgo/materialize/selling_metric"
 	"github.com/pdcgo/materialize/stat_process/backfill"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
 	"github.com/pdcgo/materialize/stat_process/gathering"
@@ -115,10 +116,24 @@ func main() {
 	pgGather.AddMetric("daily_shopeepay_balance", shopeeBalanceMetric)
 
 	// running untuk sync ke postgres
-	err = pgGather.StartSync()
-	if err != nil {
-		panic(err)
-	}
+	go func() {
+	PP:
+		for {
+			select {
+			case <-ctx.Done():
+				break PP
+			default:
+				if source.GetStatus() == ReplicaMode {
+					break PP
+				}
+			}
+		}
+
+		err := pgGather.StartSync()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	// mulai stream
 	difCalc := metric.NewDiffAccountCalc(badgedb, exact)
@@ -126,6 +141,10 @@ func main() {
 		NewRunnerContext(ctx).
 		CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
 			source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
+			sourcePipe := ExactOne(ctx, exact, source)
+
+			shopDailyMetric, shopDailyStream := selling_metric.NewShopDailyMetric(ctx, exact, badgedb, sourcePipe)
+			pgGather.AddMetric("daily_shop", shopDailyMetric)
 
 			exactone := source.
 				Via("exact_one", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -136,30 +155,18 @@ func main() {
 					case
 						"inv_resolutions",
 						"expense_histories",
-						"inv_transactions",
-						"restock_costs",
 						"invoice_payment_submission",
 						"product_tags",
+						"ads_expense_histories",
 						"product_category":
 						return false, nil
 
-					case "expense_accounts":
-						data := cdata.Data.(*models.ExpenseAccount)
-						err = exact.
-							Change(data).
-							Save().
-							Err()
-
-						return false, err
-
-					case "teams":
-						data := cdata.Data.(*models.Team)
-						err = exact.
-							Change(data).
-							Save().
-							Err()
-
-						return false, err
+					case "inv_transactions",
+						"order_adjustments",
+						"order_timestamps",
+						"orders",
+						"restock_costs": // exact one masih individu
+						return false, nil
 
 					case "balance_account_histories":
 						// data := cdata.Data.(*models.BalanceAccountHistory)
@@ -198,10 +205,7 @@ func main() {
 					if data.PaymentType != db_models.RestockPaymentShopeePay {
 						return false, nil
 					}
-
-					if data.ShippingFee == 0 {
-						return false, nil
-					}
+					// edit belum work
 					var exist bool
 					err = exact.
 						Change(data).
@@ -411,6 +415,8 @@ func main() {
 				topup,
 				diffamount,
 				cost,
+				shopDailyStream.
+					Via("silent", silent(ctx)),
 			).
 				Via("log", yenstream.NewMap(ctx, func(data any) (any, error) {
 					raw, err := json.Marshal(data)
@@ -436,10 +442,10 @@ func main() {
 		panic(err)
 	}
 
-	for _, data := range datas {
-		raw, _ := json.Marshal(data)
-		log.Println(string(raw))
-	}
+	// for _, data := range datas {
+	// 	raw, _ := json.Marshal(data)
+	// 	log.Println(string(raw))
+	// }
 }
 
 func silent(ctx *yenstream.RunnerContext) yenstream.Pipeline {

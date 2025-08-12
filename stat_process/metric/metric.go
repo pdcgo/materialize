@@ -52,6 +52,9 @@ func (d *defaultMetricStore[R]) EmptyAccumulator() R {
 }
 
 func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error {
+	d.Lock()
+	defer d.Unlock()
+
 	var err error
 	for _, data := range d.data {
 		data = d.output(data)
@@ -61,14 +64,15 @@ func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error 
 		}
 	}
 
-	d.Lock()
-	defer d.Unlock()
 	d.data = map[string]R{}
 	return nil
 }
 
 // Flush implements MetricStore.
 func (d *defaultMetricStore[R]) FlushHandler(handle func(acc R) error) error {
+	d.Lock()
+	defer d.Unlock()
+
 	var err error
 	for _, data := range d.data {
 		data = d.output(data)
@@ -78,21 +82,19 @@ func (d *defaultMetricStore[R]) FlushHandler(handle func(acc R) error) error {
 		}
 	}
 
-	d.Lock()
-	defer d.Unlock()
 	d.data = map[string]R{}
 	return nil
 }
 
 // Flush implements MetricStore.
 func (d *defaultMetricStore[R]) Flush(toChan chan any) {
+	d.Lock()
+	defer d.Unlock()
 	for _, data := range d.data {
 		data = d.output(data)
 		toChan <- data
 	}
 
-	d.Lock()
-	defer d.Unlock()
 	d.data = map[string]R{}
 }
 

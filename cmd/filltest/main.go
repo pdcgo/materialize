@@ -186,7 +186,7 @@ func runBackfill(ctx context.Context, cdcChan chan<- *stat_replica.CdcMessage) {
 		cdcChan <- cdata
 	})
 
-	ord := backfill.NewBackfillOrder(ctx, conn)
+	ord := backfill.NewBackfillOrder(ctx, conn, nil)
 	ord.Start(func(cdata *stat_replica.CdcMessage) {
 		cdcChan <- cdata
 	})

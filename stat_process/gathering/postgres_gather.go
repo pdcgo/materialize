@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/pdcgo/materialize/selling_metric"
 	"github.com/pdcgo/materialize/stat_process/metric"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -49,7 +50,10 @@ func (p *postgresGatherImpl) StartSync() error {
 		return err
 	}
 
-	err = db.AutoMigrate(&metric.DailyShopeepayBalance{})
+	err = db.AutoMigrate(
+		&metric.DailyShopeepayBalance{},
+		&selling_metric.DailyShopMetricData{},
+	)
 	if err != nil {
 		return err
 	}
@@ -58,6 +62,7 @@ func (p *postgresGatherImpl) StartSync() error {
 		slog.Info("starting sync metric to postgres")
 
 		for {
+			time.Sleep(time.Second * 10)
 			// slog.Info("running sync", slog.String("gather", "postgres gather"))
 			for key, met := range p.metrics {
 				err = met.FlushCallback(func(acc any) error {
@@ -74,7 +79,7 @@ func (p *postgresGatherImpl) StartSync() error {
 					slog.Error(err.Error(), slog.String("metric", key))
 				}
 			}
-			time.Sleep(time.Second * 5)
+
 		}
 	}()
 

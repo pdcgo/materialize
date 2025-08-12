@@ -7,6 +7,10 @@ import (
 	"reflect"
 )
 
+type Coder interface {
+	GetCoder(key string) (interface{}, error)
+}
+
 type coderMapper struct {
 	data map[string]interface{}
 }

@@ -8,8 +8,16 @@ import (
 	"github.com/pdcgo/materialize/stat_replica"
 )
 
+type StreamStatus string
+
+const (
+	BackfillMode StreamStatus = "backfill"
+	ReplicaMode  StreamStatus = "replica"
+)
+
 type CDCStream interface {
 	Init() CDCStream
+	GetStatus() StreamStatus
 	AddTearDown(handle func()) CDCStream
 	Close()
 	Backfill() CDCStream
@@ -18,12 +26,18 @@ type CDCStream interface {
 }
 
 type cdcStreamImpl struct {
+	status    StreamStatus
 	repcfg    *stat_replica.ReplicationConfig
 	cfg       *backfill.BackfillConfig
 	ctx       context.Context
 	cdataChan chan *stat_replica.CdcMessage
 	err       error
 	closefunc []func()
+}
+
+// GetStatus implements CDCStream.
+func (c *cdcStreamImpl) GetStatus() StreamStatus {
+	return c.status
 }
 
 // AddTearDown implements CDCStream.
@@ -45,7 +59,7 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 	slog.Info("starting backfilling process")
 
 	var err error
-
+	c.status = BackfillMode
 	conn, err := backfill.ConnectProdDatabase(c.ctx)
 	if err != nil {
 		return c.setErr(err)
@@ -56,6 +70,7 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 	tables := backfill.NewBackfillTable(c.ctx, conn, []string{
 		"teams",
 		"expense_accounts",
+		"marketplaces",
 	})
 	err = tables.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
@@ -64,30 +79,45 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 		return c.setErr(err)
 	}
 
-	invtx := backfill.NewBackfillInvTransaction(c.ctx, conn, c.cfg)
-	invtx.Start(func(cdata *stat_replica.CdcMessage) {
+	// invtx := backfill.NewBackfillInvTransaction(c.ctx, conn, c.cfg)
+	// invtx.Start(func(cdata *stat_replica.CdcMessage) {
+	// 	c.cdataChan <- cdata
+	// })
+
+	// restockCost := backfill.NewBackfillRestockCost(c.ctx, conn, c.cfg)
+	// restockCost.Start(func(cdata *stat_replica.CdcMessage) {
+	// 	c.cdataChan <- cdata
+	// })
+
+	// balanceHist := backfill.NewBackfillBalanceHistories(c.ctx, conn, c.cfg)
+	// balanceHist.Start(func(cdata *stat_replica.CdcMessage) {
+	// 	c.cdataChan <- cdata
+	// })
+
+	adsExpense := backfill.NewBackfillAdsExpenseHist(c.ctx, conn, c.cfg)
+	adsExpense.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
-	restockCost := backfill.NewBackfillRestockCost(c.ctx, conn, c.cfg)
-	restockCost.Start(func(cdata *stat_replica.CdcMessage) {
+	order := backfill.NewBackfillOrder(c.ctx, conn, c.cfg)
+	order.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
-	balanceHist := backfill.NewBackfillBalanceHistories(c.ctx, conn, c.cfg)
-	balanceHist.Start(func(cdata *stat_replica.CdcMessage) {
+	orderadj := backfill.NewBackfillOrderAdj(c.ctx, conn, c.cfg)
+	orderadj.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
-	expense := backfill.NewBackfillExpenseHist(c.ctx, conn, c.cfg)
-	expense.Start(func(cdata *stat_replica.CdcMessage) {
-		c.cdataChan <- cdata
-	})
+	// expense := backfill.NewBackfillExpenseHist(c.ctx, conn, c.cfg)
+	// expense.Start(func(cdata *stat_replica.CdcMessage) {
+	// 	c.cdataChan <- cdata
+	// })
 
-	invres := backfill.NewBackfillInvResolutionHist(c.ctx, conn, c.cfg)
-	invres.Start(func(cdata *stat_replica.CdcMessage) {
-		c.cdataChan <- cdata
-	})
+	// invres := backfill.NewBackfillInvResolutionHist(c.ctx, conn, c.cfg)
+	// invres.Start(func(cdata *stat_replica.CdcMessage) {
+	// 	c.cdataChan <- cdata
+	// })
 
 	return c
 }
@@ -116,9 +146,10 @@ func (c *cdcStreamImpl) Init() CDCStream {
 
 // Stream implements CDCStream.
 func (c *cdcStreamImpl) Stream() CDCStream {
+
 	slog.Info("starting replication streaming")
 	var err error
-
+	c.status = ReplicaMode
 	conn, err := stat_replica.ConnectProdDatabase(c.ctx)
 	if err != nil {
 		return c.setErr(err)
