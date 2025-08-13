@@ -15,10 +15,18 @@ import (
 )
 
 type DailyShopMetricData struct {
-	Day                   string  `json:"day" gorm:"primaryKey"`
-	ShopID                uint    `json:"shop_id" gorm:"primaryKey"`
-	TeamID                uint    `json:"team_id"`
-	AdsSpentAmount        float64 `json:"ads_spent_amount"`
+	Day               string  `json:"day" gorm:"primaryKey"`
+	ShopID            uint    `json:"shop_id" gorm:"primaryKey"`
+	TeamID            uint    `json:"team_id"`
+	AdsSpentAmount    float64 `json:"ads_spent_amount"`
+	CancelOrderAmount float64 `json:"cancel_order_amount"`
+
+	ReturnCreatedAmount float64 `json:"return_created_amount"`
+	ReturnArrivedAmount float64 `json:"return_arrived_amount"`
+
+	ProblemOrderAmount float64 `json:"problem_order_amount"`
+	LostOrderAmount    float64 `json:"lost_order_amount"`
+
 	CreatedOrderAmount    float64 `json:"created_order_amount"`
 	SysCreatedOrderAmount float64 `json:"sys_created_order_amount"`
 
@@ -41,6 +49,282 @@ func (d *DailyShopMetricData) Key() string {
 	return fmt.Sprintf("metric/daily_shop/%s/%d/%d", d.Day, d.TeamID, d.ShopID)
 }
 
+type DailyShopPipeline struct {
+	exact   exact_one.ExactlyOnce
+	dmetric metric.MetricStore[*DailyShopMetricData]
+	ctx     *yenstream.RunnerContext
+}
+
+func (ds *DailyShopPipeline) Return(source yenstream.Pipeline) yenstream.Pipeline {
+	returnSource := source.
+		Via("dshop_return_filter", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.SourceMetadata.Table != "inv_transactions" {
+				return false, nil
+			}
+
+			data := cdata.Data.(*models.InvTransaction)
+			if data.Type != db_models.InvTxReturn {
+				return false, nil
+			}
+
+			switch cdata.ModType {
+			case stat_replica.CdcBackfill:
+				if cdata.OldData == nil {
+					return true, nil
+				}
+			case stat_replica.CdcInsert, stat_replica.CdcUpdate:
+				return true, nil
+			}
+
+			return false, nil
+		}))
+
+	arrived := returnSource.
+		Via("dshop_only_backfill_update", yenstream.NewFlatMap(ds.ctx, func(cdata *stat_replica.CdcMessage) ([]*DailyShopMetricData, error) {
+			data := cdata.Data.(*models.InvTransaction)
+			result := []*DailyShopMetricData{}
+
+			orddata := &models.InvOrderData{
+				InvID: data.ID,
+			}
+
+			found, err := ds.exact.GetItemStruct(orddata)
+			if err != nil {
+				return result, err
+			}
+
+			if !found {
+				return result, errors.New("order data not found")
+			}
+
+			switch cdata.ModType {
+			case stat_replica.CdcBackfill:
+				if data.Arrived.IsZero() {
+					return result, nil
+				}
+
+				result = append(result, &DailyShopMetricData{
+					Day:                 data.Arrived.Local().Format("2006-01-02"),
+					ShopID:              orddata.MpID,
+					TeamID:              data.TeamID,
+					ReturnArrivedAmount: orddata.MpTotal,
+				})
+			case stat_replica.CdcUpdate:
+				var oldarr time.Time
+
+				old, ok := cdata.OldData.(*models.InvTransaction)
+				if ok {
+					oldarr = old.Arrived
+				}
+
+				if data.Arrived.Local().Compare(oldarr.Local()) != 0 {
+					result = append(result, &DailyShopMetricData{
+						Day:                 data.Arrived.Local().Format("2006-01-02"),
+						ShopID:              orddata.MpID,
+						TeamID:              data.TeamID,
+						ReturnArrivedAmount: orddata.MpTotal,
+					})
+				}
+
+			}
+			return result, nil
+		}))
+
+	created := returnSource.
+		Via("dshop_filter_update", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.ModType == stat_replica.CdcUpdate {
+				return false, nil
+			}
+			return true, nil
+		})).
+		Via("dshop_return_add_metric", yenstream.NewMap(ds.ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+			data := cdata.Data.(*models.InvTransaction)
+
+			orddata := &models.InvOrderData{
+				InvID: data.ID,
+			}
+
+			found, err := ds.exact.GetItemStruct(orddata)
+			if err != nil {
+				return cdata, err
+			}
+
+			if !found {
+				return cdata, errors.New("inv order data not found")
+			}
+
+			item := &DailyShopMetricData{
+				Day:                 data.Created.Local().Format("2006-01-02"),
+				ShopID:              orddata.MpID,
+				TeamID:              orddata.TeamID,
+				ReturnCreatedAmount: orddata.MpTotal,
+			}
+
+			err = ds.dmetric.Merge(item.Key(), func(acc *DailyShopMetricData) *DailyShopMetricData {
+				if acc == nil {
+					return item
+				}
+
+				acc.ReturnCreatedAmount += item.ReturnCreatedAmount
+				return acc
+			})
+
+			return cdata, err
+		}))
+
+	return yenstream.NewFlatten(ds.ctx, "ds_return_flatten", created, arrived)
+}
+
+func (ds *DailyShopPipeline) Lost(source yenstream.Pipeline) yenstream.Pipeline {
+	return source.
+		Via("extract_lost", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.OldData != nil {
+				return false, nil
+			}
+			if cdata.SourceMetadata.Table != "order_timestatmps" {
+				return false, nil
+			}
+
+			return true, nil
+		})).
+		Via("lost_add_metric", yenstream.NewMap(ds.ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+			var err error
+			data := cdata.Data.(*models.OrderTimestamp)
+
+			ord := &models.Order{
+				ID: data.OrderID,
+			}
+
+			found, err := ds.exact.GetItemStruct(ord)
+			if err != nil {
+				return cdata, err
+			}
+
+			if !found {
+				return cdata, errors.New("order not found")
+			}
+
+			item := &DailyShopMetricData{
+				Day:             data.Timestamp.Local().Format("2006-01-02"),
+				ShopID:          ord.OrderMpID,
+				TeamID:          ord.TeamID,
+				LostOrderAmount: float64(ord.OrderMpTotal),
+			}
+			switch data.OrderStatus {
+			case db_models.OrdProblem:
+				ds.dmetric.Merge(item.Key(), func(acc *DailyShopMetricData) *DailyShopMetricData {
+					if acc == nil {
+						return item
+					}
+
+					acc.LostOrderAmount += item.LostOrderAmount
+					return acc
+				})
+			}
+			return cdata, nil
+		}))
+}
+
+func (ds *DailyShopPipeline) Problem(source yenstream.Pipeline) yenstream.Pipeline {
+	return source.
+		Via("extract_problem", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.OldData != nil {
+				return false, nil
+			}
+			if cdata.SourceMetadata.Table != "order_timestatmps" {
+				return false, nil
+			}
+
+			return true, nil
+		})).
+		Via("problem_add_metric", yenstream.NewMap(ds.ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+			var err error
+			data := cdata.Data.(*models.OrderTimestamp)
+
+			ord := &models.Order{
+				ID: data.OrderID,
+			}
+
+			found, err := ds.exact.GetItemStruct(ord)
+			if err != nil {
+				return cdata, err
+			}
+
+			if !found {
+				return cdata, errors.New("order not found")
+			}
+
+			item := &DailyShopMetricData{
+				Day:                data.Timestamp.Local().Format("2006-01-02"),
+				ShopID:             ord.OrderMpID,
+				TeamID:             ord.TeamID,
+				ProblemOrderAmount: float64(ord.OrderMpTotal),
+			}
+			switch data.OrderStatus {
+			case db_models.OrdProblem:
+				ds.dmetric.Merge(item.Key(), func(acc *DailyShopMetricData) *DailyShopMetricData {
+					if acc == nil {
+						return item
+					}
+
+					acc.ProblemOrderAmount += item.ProblemOrderAmount
+					return acc
+				})
+			}
+			return cdata, nil
+		}))
+}
+
+func (ds *DailyShopPipeline) Cancel(source yenstream.Pipeline) yenstream.Pipeline {
+	return source.
+		Via("extract_cancel", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.OldData != nil {
+				return false, nil
+			}
+			if cdata.SourceMetadata.Table != "order_timestatmps" {
+				return false, nil
+			}
+
+			return true, nil
+		})).
+		Via("cancel_add_metric", yenstream.NewMap(ds.ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+			var err error
+			data := cdata.Data.(*models.OrderTimestamp)
+
+			ord := &models.Order{
+				ID: data.OrderID,
+			}
+
+			found, err := ds.exact.GetItemStruct(ord)
+			if err != nil {
+				return cdata, err
+			}
+
+			if !found {
+				return cdata, errors.New("order not found")
+			}
+
+			item := &DailyShopMetricData{
+				Day:               data.Timestamp.Local().Format("2006-01-02"),
+				ShopID:            ord.OrderMpID,
+				TeamID:            ord.TeamID,
+				CancelOrderAmount: float64(ord.OrderMpTotal),
+			}
+			switch data.OrderStatus {
+			case db_models.OrdCancel:
+				ds.dmetric.Merge(item.Key(), func(acc *DailyShopMetricData) *DailyShopMetricData {
+					if acc == nil {
+						return item
+					}
+
+					acc.CancelOrderAmount += item.CancelOrderAmount
+					return acc
+				})
+			}
+			return cdata, nil
+		}))
+}
+
 func NewShopDailyMetric(
 	ctx *yenstream.RunnerContext,
 	exact exact_one.ExactlyOnce,
@@ -57,10 +341,16 @@ func NewShopDailyMetric(
 		return data
 	})
 
-	cancel := cdstream.
-		Via("order_timestamps", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
-			return true, nil
-		}))
+	dayShopPipe := DailyShopPipeline{
+		exact:   exact,
+		dmetric: store,
+		ctx:     ctx,
+	}
+
+	cancel := dayShopPipe.Cancel(cdstream)
+	lost := dayShopPipe.Lost(cdstream)
+	problem := dayShopPipe.Problem(cdstream)
+	retur := dayShopPipe.Return(cdstream)
 
 	withdrawal := cdstream.
 		Via("filter_withdrawal", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -372,6 +662,9 @@ func NewShopDailyMetric(
 		withdrawal,
 		ads,
 		cancel,
+		lost,
+		problem,
+		retur,
 	)
 	return store, result
 }

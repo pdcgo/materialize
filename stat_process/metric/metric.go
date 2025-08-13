@@ -20,12 +20,16 @@ type Preview[R MetricData] interface {
 	ToSlice() []R
 }
 
+type Metric[R MetricData] interface {
+	EmptyAccumulator() R
+	Merge(key string, merger func(acc R) R) error
+}
+
 type MetricStore[R MetricData] interface {
 	MetricFlush
 	Preview[R]
 
-	EmptyAccumulator() R
-	Merge(key string, merger func(acc R) R) error
+	Metric[R]
 	FlushHandler(handle func(acc R) error) error
 }
 
@@ -53,10 +57,12 @@ func (d *defaultMetricStore[R]) EmptyAccumulator() R {
 
 func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error {
 	d.Lock()
-	defer d.Unlock()
+	datas := d.data
+	d.data = map[string]R{}
+	d.Unlock()
 
 	var err error
-	for _, data := range d.data {
+	for _, data := range datas {
 		data = d.output(data)
 		err = handle(data)
 		if err != nil {
@@ -64,17 +70,18 @@ func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error 
 		}
 	}
 
-	d.data = map[string]R{}
 	return nil
 }
 
 // Flush implements MetricStore.
 func (d *defaultMetricStore[R]) FlushHandler(handle func(acc R) error) error {
 	d.Lock()
-	defer d.Unlock()
+	datas := d.data
+	d.data = map[string]R{}
+	d.Unlock()
 
 	var err error
-	for _, data := range d.data {
+	for _, data := range datas {
 		data = d.output(data)
 		err = handle(data)
 		if err != nil {
@@ -82,20 +89,21 @@ func (d *defaultMetricStore[R]) FlushHandler(handle func(acc R) error) error {
 		}
 	}
 
-	d.data = map[string]R{}
 	return nil
 }
 
 // Flush implements MetricStore.
 func (d *defaultMetricStore[R]) Flush(toChan chan any) {
 	d.Lock()
-	defer d.Unlock()
-	for _, data := range d.data {
+	datas := d.data
+	d.data = map[string]R{}
+	d.Unlock()
+
+	for _, data := range datas {
 		data = d.output(data)
 		toChan <- data
 	}
 
-	d.data = map[string]R{}
 }
 
 func (d *defaultMetricStore[R]) getItem(key string) (R, error) {

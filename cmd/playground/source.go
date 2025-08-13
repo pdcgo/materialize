@@ -79,28 +79,28 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 		return c.setErr(err)
 	}
 
-	// invtx := backfill.NewBackfillInvTransaction(c.ctx, conn, c.cfg)
-	// invtx.Start(func(cdata *stat_replica.CdcMessage) {
-	// 	c.cdataChan <- cdata
-	// })
-
-	// restockCost := backfill.NewBackfillRestockCost(c.ctx, conn, c.cfg)
-	// restockCost.Start(func(cdata *stat_replica.CdcMessage) {
-	// 	c.cdataChan <- cdata
-	// })
-
-	// balanceHist := backfill.NewBackfillBalanceHistories(c.ctx, conn, c.cfg)
-	// balanceHist.Start(func(cdata *stat_replica.CdcMessage) {
-	// 	c.cdataChan <- cdata
-	// })
-
-	adsExpense := backfill.NewBackfillAdsExpenseHist(c.ctx, conn, c.cfg)
-	adsExpense.Start(func(cdata *stat_replica.CdcMessage) {
+	order := backfill.NewBackfillOrder(c.ctx, conn, c.cfg)
+	order.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
-	order := backfill.NewBackfillOrder(c.ctx, conn, c.cfg)
-	order.Start(func(cdata *stat_replica.CdcMessage) {
+	invtx := backfill.NewBackfillInvTransaction(c.ctx, conn, c.cfg)
+	invtx.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
+
+	restockCost := backfill.NewBackfillRestockCost(c.ctx, conn, c.cfg)
+	restockCost.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
+
+	balanceHist := backfill.NewBackfillBalanceHistories(c.ctx, conn, c.cfg)
+	balanceHist.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
+
+	adsExpense := backfill.NewBackfillAdsExpenseHist(c.ctx, conn, c.cfg)
+	adsExpense.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
@@ -109,15 +109,15 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 		c.cdataChan <- cdata
 	})
 
-	// expense := backfill.NewBackfillExpenseHist(c.ctx, conn, c.cfg)
-	// expense.Start(func(cdata *stat_replica.CdcMessage) {
-	// 	c.cdataChan <- cdata
-	// })
+	expense := backfill.NewBackfillExpenseHist(c.ctx, conn, c.cfg)
+	expense.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
 
-	// invres := backfill.NewBackfillInvResolutionHist(c.ctx, conn, c.cfg)
-	// invres.Start(func(cdata *stat_replica.CdcMessage) {
-	// 	c.cdataChan <- cdata
-	// })
+	invres := backfill.NewBackfillInvResolutionHist(c.ctx, conn, c.cfg)
+	invres.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
 
 	return c
 }

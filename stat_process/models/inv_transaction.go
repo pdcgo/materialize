@@ -29,8 +29,8 @@ type InvTransaction struct {
 	IsShipped bool                  `json:"is_shipped"`
 	Deleted   bool                  `json:"deleted" gorm:"index"`
 
-	// Arrived *time.Time `json:"arrived"`
-	// SendAt  *time.Time `json:"send_at"`
+	Arrived time.Time `json:"arrived"`
+	SendAt  time.Time `json:"send_at"`
 	Created time.Time `json:"created" gorm:"index"`
 
 	Total float64 `json:"total"`

@@ -20,6 +20,7 @@ type CanFressness interface {
 }
 
 type postgresGatherImpl struct {
+	db      *gorm.DB
 	ctx     context.Context
 	metrics map[string]metric.MetricFlush
 }
@@ -31,49 +32,27 @@ func (p *postgresGatherImpl) AddMetric(key string, metric metric.MetricFlush) {
 	}
 	p.metrics[key] = metric
 }
+func (p *postgresGatherImpl) SaveItem(acc any) error {
+	facc, ok := acc.(CanFressness)
+	if !ok {
+		name := reflect.TypeOf(acc).Elem().Name()
+		return fmt.Errorf("item doesnt implement freshness %s", name)
+	}
+	facc.SetFreshness(time.Now().Local())
+	return p.db.Save(facc).Error
+}
 
 func (p *postgresGatherImpl) StartSync() error {
-	host := getEnv("STAT_POSTGRES_HOST", "localhost")
-	user := getEnv("STAT_POSTGRES_USER", "user")
-	pass := getEnv("STAT_POSTGRES_PASSWORD", "password")
-	dbname := getEnv("STAT_POSTGRES_DB", "postgres")
-
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable TimeZone=Asia/Jakarta",
-		host,
-		user,
-		pass,
-		dbname,
-	)
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		return err
-	}
-
-	err = db.AutoMigrate(
-		&metric.DailyShopeepayBalance{},
-		&selling_metric.DailyShopMetricData{},
-	)
-	if err != nil {
-		return err
-	}
 
 	go func() {
+		var err error
 		slog.Info("starting sync metric to postgres")
 
 		for {
 			time.Sleep(time.Second * 10)
 			// slog.Info("running sync", slog.String("gather", "postgres gather"))
 			for key, met := range p.metrics {
-				err = met.FlushCallback(func(acc any) error {
-					facc, ok := acc.(CanFressness)
-					if !ok {
-						name := reflect.TypeOf(acc).Elem().Name()
-						return fmt.Errorf("item doesnt implement freshness %s", name)
-					}
-					facc.SetFreshness(time.Now().Local())
-					return db.Save(facc).Error
-				})
+				err = met.FlushCallback(p.SaveItem)
 
 				if err != nil {
 					slog.Error(err.Error(), slog.String("metric", key))
@@ -88,11 +67,47 @@ func (p *postgresGatherImpl) StartSync() error {
 
 // var _ metric.MetricGather = (*postgresGatherImpl)(nil)
 
+func createDB() (*gorm.DB, error) {
+	var err error
+	host := getEnv("STAT_POSTGRES_HOST", "localhost")
+	user := getEnv("STAT_POSTGRES_USER", "user")
+	pass := getEnv("STAT_POSTGRES_PASSWORD", "password")
+	dbname := getEnv("STAT_POSTGRES_DB", "postgres")
+
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=5432 sslmode=disable TimeZone=Asia/Jakarta",
+		host,
+		user,
+		pass,
+		dbname,
+	)
+
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return db, err
+	}
+
+	err = db.AutoMigrate(
+		&metric.DailyShopeepayBalance{},
+		&selling_metric.DailyShopMetricData{},
+	)
+	if err != nil {
+		return db, err
+	}
+
+	return db, err
+}
+
 func NewPostgresGather(ctx context.Context) *postgresGatherImpl {
-	return &postgresGatherImpl{
+	db, err := createDB()
+	if err != nil {
+		panic(err)
+	}
+	pggat := &postgresGatherImpl{
+		db:      db,
 		ctx:     ctx,
 		metrics: map[string]metric.MetricFlush{},
 	}
+	return pggat
 }
 
 func getEnv(key, defaultValue string) string {

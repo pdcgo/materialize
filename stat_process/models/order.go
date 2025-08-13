@@ -94,3 +94,20 @@ type OrderTimestamp struct {
 	OrderStatus db_models.OrdStatus      `json:"order_status"`
 	Timestamp   time.Time                `json:"timestamp" gorm:"index"`
 }
+
+type InvOrderData struct {
+	InvID   uint    `json:"inv_id"`
+	OrderID uint    `json:"order_id"`
+	TeamID  uint    `json:"team_id"`
+	MpID    uint    `json:"mp_id"`
+	MpTotal float64 `json:"mp_total"`
+}
+
+func (o *InvOrderData) Key() string {
+	meta := stat_replica.SourceMetadata{
+		Table:  "inv_order",
+		Schema: "cache",
+	}
+
+	return fmt.Sprintf("%s%d", meta.PrefixKey(), o.InvID)
+}

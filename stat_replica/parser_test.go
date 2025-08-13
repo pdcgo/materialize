@@ -9,7 +9,8 @@ import (
 )
 
 func TestBasicCrudParsing(t *testing.T) {
-	parser := stat_replica.NewV2Parser(t.Context())
+	ctx := stat_replica.ContextWithCoder(t.Context())
+	parser := stat_replica.NewV2Parser(ctx)
 	t.Run("testing insert data", func(t *testing.T) {
 		var err error
 
