@@ -16,14 +16,14 @@ import (
 type DailyShopeepayPipeline struct {
 	ctx     *yenstream.RunnerContext
 	badgedb *badger.DB
-	metric  metric.Metric[*metric.DailyShopeepayBalance]
+	metric  metric.MetricStore[*metric.DailyShopeepayBalance]
 	exact   exact_one.ExactlyOnce
 }
 
 func NewDailyShopeepayPipeline(
 	ctx *yenstream.RunnerContext,
 	badgedb *badger.DB,
-	metric metric.Metric[*metric.DailyShopeepayBalance],
+	metric metric.MetricStore[*metric.DailyShopeepayBalance],
 	exact exact_one.ExactlyOnce,
 ) *DailyShopeepayPipeline {
 	return &DailyShopeepayPipeline{

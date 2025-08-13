@@ -20,8 +20,47 @@ type DailyShopeepayBalance struct {
 	Freshness        time.Time `json:"-"`
 }
 
+// Merge implements MetricData.
+func (d *DailyShopeepayBalance) Merge(dold interface{}) MetricData {
+	if dold == nil {
+		return d
+	}
+
+	old := dold.(*DailyShopeepayBalance)
+
+	return &DailyShopeepayBalance{
+		Day:              d.Day,
+		TeamID:           d.TeamID,
+		TeamName:         d.TeamName,
+		DiffAmount:       d.DiffAmount + old.DiffAmount,
+		ErrDiffAmount:    d.ErrDiffAmount + old.ErrDiffAmount,
+		ActualDiffAmount: d.ActualDiffAmount + old.ActualDiffAmount,
+		RefundAmount:     d.RefundAmount + old.RefundAmount,
+		CostAmount:       d.CostAmount + old.CostAmount,
+		TopupAmount:      d.TopupAmount + old.TopupAmount,
+	}
+}
+
 func (d *DailyShopeepayBalance) SetFreshness(n time.Time) {
 	d.Freshness = n
+}
+
+func (d *DailyShopeepayBalance) Merges(old *DailyShopeepayBalance) *DailyShopeepayBalance {
+	if old == nil {
+		return d
+	}
+
+	return &DailyShopeepayBalance{
+		Day:              d.Day,
+		TeamID:           d.TeamID,
+		TeamName:         d.TeamName,
+		DiffAmount:       d.DiffAmount + old.DiffAmount,
+		ErrDiffAmount:    d.ErrDiffAmount + old.ErrDiffAmount,
+		ActualDiffAmount: d.ActualDiffAmount + old.ActualDiffAmount,
+		RefundAmount:     d.RefundAmount + old.RefundAmount,
+		CostAmount:       d.CostAmount + old.CostAmount,
+		TopupAmount:      d.TopupAmount + old.TopupAmount,
+	}
 }
 
 // CsvData implements main.CsvItem.

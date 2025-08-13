@@ -10,7 +10,7 @@ import (
 func NewDailyShopeepayBalanceMetric(
 	badgedb *badger.DB,
 	exact exact_one.ExactlyOnce,
-) metric.Metric[*metric.DailyShopeepayBalance] {
+) metric.MetricStore[*metric.DailyShopeepayBalance] {
 	shopeeBalanceMetric := metric.NewDefaultMetricStore(
 		badgedb,
 		func() *metric.DailyShopeepayBalance {

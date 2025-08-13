@@ -9,11 +9,11 @@ import (
 )
 
 type InvResolution struct {
-	ID          uint  `json:"id"`
-	TxID        uint  `json:"tx_id"`
-	TeamID      uint  `json:"team_id"`
-	WarehouseID uint  `json:"warehouse_id"`
-	InTxID      *uint `json:"res_tx_id"` // untuk id restock an ketika type reshipping
+	ID          uint `json:"id"`
+	TxID        uint `json:"tx_id"`
+	TeamID      uint `json:"team_id"`
+	WarehouseID uint `json:"warehouse_id"`
+	InTxID      uint `json:"res_tx_id"` // untuk id restock an ketika type reshipping
 
 	RefundPaymentType db_models.RestockPaymentType `json:"refund_payment_type"`
 	RefundAmount      float64                      `json:"refund_amount"`

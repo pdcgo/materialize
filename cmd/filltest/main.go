@@ -7,12 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"reflect"
-	"strings"
 	"syscall"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pdcgo/materialize/stat_process/backfill"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
 	"github.com/pdcgo/materialize/stat_process/metric"
@@ -78,15 +74,15 @@ func main() {
 					return exact.AddItemWithKey("id", cdata)
 				}))
 
-			wareInvoiceMetric := metric.NewDefaultMetricStore(badgedb, func() *metric.DailyWarehouseInvoice {
-				return &metric.DailyWarehouseInvoice{}
-			}, nil)
+			// wareInvoiceMetric := metric.NewDefaultMetricStore(badgedb, func() *metric.DailyWarehouseInvoice {
+			// 	return &metric.DailyWarehouseInvoice{}
+			// }, nil)
 
 			// shopeeBalanceMetric := metric.NewDefaultMetricStore(badgedb, func() *metric.DailyShopeepayBalance {
 			// 	return &metric.DailyShopeepayBalance{}
 			// })
 
-			metricGather.AddMetric("warehouse_invoice", wareInvoiceMetric)
+			// metricGather.AddMetric("warehouse_invoice", wareInvoiceMetric)
 
 			invoice := exactone.
 				Via("only_invoice_warehouse", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -115,37 +111,37 @@ func main() {
 					return cdata.SourceMetadata.Table == "invoices", nil
 				})).
 				Via("add_warehouse_metric", yenstream.NewMap(ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
-					dataMap := cdata.Data.(map[string]interface{})
+					// dataMap := cdata.Data.(map[string]interface{})
 
-					var amountN pgtype.Numeric = dataMap["amount"].(pgtype.Numeric)
-					amount, err := amountN.Float64Value()
+					// var amountN pgtype.Numeric = dataMap["amount"].(pgtype.Numeric)
+					// amount, err := amountN.Float64Value()
 
-					var day string
-					createdD := dataMap["created"]
-					switch created := createdD.(type) {
-					case time.Time:
-						day = created.Local().Format("2006-01-02")
-					case string:
-						dd := strings.Split(created, "T")
-						day = dd[0]
-					default:
-						tname := reflect.TypeOf(createdD).Name()
-						panic(fmt.Sprintf("created not supported type %s", tname))
-					}
+					// var day string
+					// createdD := dataMap["created"]
+					// switch created := createdD.(type) {
+					// case time.Time:
+					// 	day = created.Local().Format("2006-01-02")
+					// case string:
+					// 	dd := strings.Split(created, "T")
+					// 	day = dd[0]
+					// default:
+					// 	tname := reflect.TypeOf(createdD).Name()
+					// 	panic(fmt.Sprintf("created not supported type %s", tname))
+					// }
 
-					met := metric.DailyWarehouseInvoice{
-						WarehouseID:   uint(dataMap["to_team_id"].(int64)),
-						CreatedAmount: amount.Float64,
-						Day:           day,
-					}
+					// met := metric.DailyWarehouseInvoice{
+					// 	WarehouseID:   uint(dataMap["to_team_id"].(int64)),
+					// 	CreatedAmount: amount.Float64,
+					// 	Day:           day,
+					// }
 
-					err = wareInvoiceMetric.Merge(met.Key(), func(acc *metric.DailyWarehouseInvoice) *metric.DailyWarehouseInvoice {
-						if acc == nil {
-							return &met
-						}
-						acc.CreatedAmount += met.CreatedAmount
-						return acc
-					})
+					// err = wareInvoiceMetric.Merge(met.Key(), func(acc *metric.DailyWarehouseInvoice) *metric.DailyWarehouseInvoice {
+					// 	if acc == nil {
+					// 		return &met
+					// 	}
+					// 	acc.CreatedAmount += met.CreatedAmount
+					// 	return acc
+					// })
 
 					return cdata, err
 				})).

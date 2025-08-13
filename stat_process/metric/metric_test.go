@@ -18,6 +18,20 @@ type Tcount struct {
 	Amount float64 `json:"amount"`
 }
 
+// Merge implements metric.MetricData.
+func (t *Tcount) Merge(dold interface{}) metric.MetricData {
+	if dold == nil {
+		return t
+	}
+	old := dold.(*Tcount)
+	return &Tcount{
+		ID:     t.ID,
+		Day:    t.Day,
+		Amount: t.Amount + old.Amount,
+	}
+
+}
+
 // Key implements metric.MetricData.
 func (t *Tcount) Key() string {
 	return fmt.Sprintf("%d", t.ID)
@@ -51,11 +65,13 @@ func TestMetricStore(t *testing.T) {
 				assert.Nil(t, err)
 			}
 
-			tmetric.FlushHandler(func(acc *Tcount) error {
+			err := tmetric.FlushCallback(func(acc any) error {
 				raw, _ := json.Marshal(acc)
 				log.Println(string(raw))
 				return nil
 			})
+
+			assert.Nil(t, err)
 
 		},
 	)

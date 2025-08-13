@@ -1,7 +1,6 @@
 package selling_pipeline_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -21,11 +20,10 @@ func TestShopeepay(t *testing.T) {
 	var bdb db_mock.BadgeDBMock
 	cdchan := make(chan *stat_replica.CdcMessage, 1)
 
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx := t.Context()
 
 	go func() {
 		defer close(cdchan)
-		defer cancel()
 		cdchan <- &stat_replica.CdcMessage{
 			SourceMetadata: &stat_replica.SourceMetadata{
 				Table:  "expense_accounts",
@@ -95,6 +93,9 @@ func TestShopeepay(t *testing.T) {
 			var c int = 0
 
 			exact := exact_one.NewBadgeExactOne(ctx, bdb.DB)
+
+			smetric := selling_metric.NewDailyShopeepayBalanceMetric(bdb.DB, exact)
+
 			yenstream.NewRunnerContext(ctx).
 				CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
 					source := yenstream.
@@ -103,34 +104,14 @@ func TestShopeepay(t *testing.T) {
 							return true, nil
 						}))
 
-					source = selling_pipeline.ExactOne(ctx, exact, source)
+					source = selling_pipeline.
+						ExactOne(ctx, exact, source)
 
-					smetric := selling_metric.
-						NewMetric(
-							"shopee_balance",
-							ctx,
-							bdb.DB,
-							exact,
-							time.Second*5,
-							func() *metric.DailyShopeepayBalance {
-								return &metric.DailyShopeepayBalance{}
-							},
-							func(data *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
-								team := &models.Team{
-									ID: data.TeamID,
-								}
+					pipe := selling_pipeline.NewDailyShopeepayPipeline(ctx, bdb.DB, smetric, exact)
+					all := pipe.All(source)
 
-								exact.GetItemStruct(team)
-								data.TeamName = team.Name
-
-								data.DiffAmount = data.RefundAmount + data.TopupAmount - data.CostAmount
-								data.ErrDiffAmount = data.ActualDiffAmount - data.DiffAmount
-
-								return data, nil
-							},
-						)
-
-					smetpipe := smetric.
+					smetpipe := all.
+						Via("metric shopee", selling_metric.NewMetricStream(ctx, time.Second, smetric)).
 						Via("testing stream", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
 
 							c += 1
@@ -140,8 +121,7 @@ func TestShopeepay(t *testing.T) {
 							return met, nil
 						}))
 
-					pipe := selling_pipeline.NewDailyShopeepayPipeline(ctx, bdb.DB, smetric, exact)
-					return yenstream.NewFlatten(ctx, "flatall", smetpipe, pipe.All(source))
+					return yenstream.NewFlatten(ctx, "flatall", smetpipe)
 				})
 
 			assert.Equal(t, 1, c)

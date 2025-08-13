@@ -15,8 +15,6 @@ import (
 	"github.com/pdcgo/materialize/stat_process/backfill"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
 	"github.com/pdcgo/materialize/stat_process/gathering"
-	"github.com/pdcgo/materialize/stat_process/metric"
-	"github.com/pdcgo/materialize/stat_process/models"
 	"github.com/pdcgo/materialize/stat_process/stat_db"
 	"github.com/pdcgo/materialize/stat_replica"
 	"github.com/pdcgo/shared/yenstream"
@@ -92,10 +90,10 @@ func main() {
 	// gather := metric.NewDefaultGather()
 	pgGather := gathering.NewPostgresGather(ctx)
 
-	// shopeeBalanceMetric := selling_metric.NewDailyShopeepayBalanceMetric(
-	// 	badgedb,
-	// 	exact,
-	// )
+	shopeeBalanceMetric := selling_metric.NewDailyShopeepayBalanceMetric(
+		badgedb,
+		exact,
+	)
 
 	// running untuk sync ke postgres
 	go func() {
@@ -126,37 +124,6 @@ func main() {
 			shopDailyMetric, shopDailyStream := selling_metric.NewShopDailyMetric(ctx, exact, badgedb, sourcePipe)
 			pgGather.AddMetric("daily_shop", shopDailyMetric)
 
-			shopeeBalanceMetric := selling_metric.
-				NewMetric(
-					"shopee_balance",
-					ctx,
-					badgedb,
-					exact,
-					time.Second*5,
-					func() *metric.DailyShopeepayBalance {
-						return &metric.DailyShopeepayBalance{}
-					},
-					func(data *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
-						team := &models.Team{
-							ID: data.TeamID,
-						}
-
-						exact.GetItemStruct(team)
-						data.TeamName = team.Name
-
-						data.DiffAmount = data.RefundAmount + data.TopupAmount - data.CostAmount
-						data.ErrDiffAmount = data.ActualDiffAmount - data.DiffAmount
-
-						return data, err
-					},
-				)
-
-			pgshopeeBalance := shopeeBalanceMetric.
-				Via("save_postgres", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
-					err := pgGather.SaveItem(met)
-					return met, err
-				}))
-
 			dailyBalanceShopeepay := selling_pipeline.NewDailyShopeepayPipeline(
 				ctx,
 				badgedb,
@@ -164,12 +131,12 @@ func main() {
 				exact,
 			)
 
-			spayBalance := dailyBalanceShopeepay.All(sourcePipe)
+			spayBalance := dailyBalanceShopeepay.
+				All(sourcePipe).
+				Via("metric spay", selling_metric.NewMetricStream(ctx, time.Second*5, shopeeBalanceMetric))
 
 			return yenstream.NewFlatten(ctx, "flatten",
-				pgshopeeBalance,
-				spayBalance.
-					Via("silent", silent(ctx)),
+				spayBalance,
 				shopDailyStream.
 					Via("silent", silent(ctx)),
 			).

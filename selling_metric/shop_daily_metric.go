@@ -43,6 +43,31 @@ func (d *DailyShopMetricData) SetFreshness(n time.Time) {
 	d.Freshness = n
 }
 
+// Merge implements metric.MetricData.
+func (d *DailyShopMetricData) Merge(dold interface{}) metric.MetricData {
+	if dold == nil {
+		return d
+	}
+	old := dold.(*DailyShopMetricData)
+
+	d.AdsSpentAmount = old.AdsSpentAmount
+	d.CancelOrderAmount = old.CancelOrderAmount
+
+	d.ReturnCreatedAmount = old.ReturnCreatedAmount
+	d.ReturnArrivedAmount = old.ReturnArrivedAmount
+
+	d.ProblemOrderAmount = old.ProblemOrderAmount
+	d.LostOrderAmount = old.LostOrderAmount
+
+	d.CreatedOrderAmount = old.CreatedOrderAmount
+	d.SysCreatedOrderAmount = old.SysCreatedOrderAmount
+	d.EstWithdrawalAmount = old.EstWithdrawalAmount
+	d.WithdrawalAmount = old.WithdrawalAmount
+	d.MpAdjustmentAmount = old.MpAdjustmentAmount
+	d.AdjOrderAmount = old.AdjOrderAmount
+	return d
+}
+
 // var _ gathering.CanFressness = (*DailyShopMetricData)(nil)
 
 func (d *DailyShopMetricData) Key() string {

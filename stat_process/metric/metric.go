@@ -10,6 +10,7 @@ import (
 
 type MetricData interface {
 	Key() string
+	Merge(dold interface{}) MetricData
 }
 type MetricFlush interface {
 	Flush(toChan chan any)
@@ -20,17 +21,13 @@ type Preview[R MetricData] interface {
 	ToSlice() []R
 }
 
-type Metric[R MetricData] interface {
-	EmptyAccumulator() R
-	Merge(key string, merger func(acc R) R) error
-}
-
 type MetricStore[R MetricData] interface {
 	MetricFlush
 	Preview[R]
 
-	Metric[R]
-	FlushHandler(handle func(acc R) error) error
+	EmptyAccumulator() R
+	Merge(key string, merger func(acc R) R) error
+	Change(handle func(acc R))
 }
 
 type defaultMetricStore[R MetricData] struct {
@@ -63,7 +60,19 @@ func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error 
 
 	var err error
 	for _, data := range datas {
-		data = d.output(data)
+		var old R
+		old, err = d.getItem(data.Key())
+		if err != nil {
+			if !errors.Is(err, badger.ErrKeyNotFound) {
+				return err
+			}
+		}
+		newd := data.Merge(old)
+		err = d.setItem(newd.Key(), newd.(R))
+		if err != nil {
+			return err
+		}
+		data = d.output(newd.(R))
 		err = handle(data)
 		if err != nil {
 			return err
@@ -74,26 +83,7 @@ func (d *defaultMetricStore[R]) FlushCallback(handle func(acc any) error) error 
 }
 
 // Flush implements MetricStore.
-func (d *defaultMetricStore[R]) FlushHandler(handle func(acc R) error) error {
-	d.Lock()
-	datas := d.data
-	d.data = map[string]R{}
-	d.Unlock()
-
-	var err error
-	for _, data := range datas {
-		data = d.output(data)
-		err = handle(data)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// Flush implements MetricStore.
-func (d *defaultMetricStore[R]) Flush(toChan chan any) {
+func (d *defaultMetricStore[R]) Flush(toChan chan any) { // masih ngebug
 	d.Lock()
 	datas := d.data
 	d.data = map[string]R{}
@@ -102,6 +92,19 @@ func (d *defaultMetricStore[R]) Flush(toChan chan any) {
 	for _, data := range datas {
 		data = d.output(data)
 		toChan <- data
+	}
+
+}
+
+// Flush implements MetricStore.
+func (d *defaultMetricStore[R]) Change(handle func(acc R)) {
+	d.Lock()
+	datas := d.data
+	d.data = map[string]R{}
+	d.Unlock()
+
+	for _, data := range datas {
+		handle(data)
 	}
 
 }
@@ -144,21 +147,24 @@ func (d *defaultMetricStore[R]) Merge(key string, merger func(acc R) R) error {
 	d.Lock()
 	defer d.Unlock()
 
-	acc, err := d.getItem(key)
-	if err != nil {
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			var d R
-			acc = d
-		} else {
-			return err
-		}
-	}
+	// var err error
+	var acc R
+	// var ok bool
+
+	acc, _ = d.data[key]
+	// if !ok {
+	// 	acc, err = d.getItem(key)
+	// 	if err != nil {
+	// 		if !errors.Is(err, badger.ErrKeyNotFound) {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
 	newacc := merger(acc)
-	err = d.setItem(key, newacc)
-	if err != nil {
-		return err
-	}
+	// if err != nil {
+	// 	return err
+	// }
 
 	d.data[key] = newacc
 	return nil
