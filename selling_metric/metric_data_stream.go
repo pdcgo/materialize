@@ -9,7 +9,7 @@ import (
 
 // var _ yenstream.Pipeline = (*metricStreamImpl)(nil)
 
-type metricStreamImpl[R metric.MetricData] struct {
+type metricDataStreamImpl[R metric.MetricData] struct {
 	ctx           *yenstream.RunnerContext
 	label         string
 	out           yenstream.NodeOut
@@ -19,17 +19,17 @@ type metricStreamImpl[R metric.MetricData] struct {
 }
 
 // In implements yenstream.Pipeline.
-func (m *metricStreamImpl[R]) In() chan any {
+func (m *metricDataStreamImpl[R]) In() chan any {
 	return m.in
 }
 
 // Out implements yenstream.Pipeline.
-func (m *metricStreamImpl[R]) Out() yenstream.NodeOut {
+func (m *metricDataStreamImpl[R]) Out() yenstream.NodeOut {
 	return m.out
 }
 
 // Process implements yenstream.Pipeline.
-func (m *metricStreamImpl[R]) Process() {
+func (m *metricDataStreamImpl[R]) Process() {
 	out := m.out.C()
 	defer close(out)
 
@@ -53,30 +53,31 @@ Parent:
 	m.flushData(out)
 }
 
-func (m *metricStreamImpl[R]) flushData(out chan any) {
-	m.met.Change(func(acc R) {
+func (m *metricDataStreamImpl[R]) flushData(out chan any) {
+	m.met.FlushCallback(func(acc any) error {
 		out <- acc
+		return nil
 	})
 }
 
 // SetLabel implements yenstream.Pipeline.
-func (m *metricStreamImpl[R]) SetLabel(label string) {
+func (m *metricDataStreamImpl[R]) SetLabel(label string) {
 	m.label = label
 }
 
 // Via implements yenstream.Pipeline.
-func (m *metricStreamImpl[R]) Via(label string, pipe yenstream.Pipeline) yenstream.Pipeline {
+func (m *metricDataStreamImpl[R]) Via(label string, pipe yenstream.Pipeline) yenstream.Pipeline {
 	m.ctx.RegisterStream(label, m, pipe)
 
 	return pipe
 }
 
-func NewMetricStream[R metric.MetricData](
+func NewMetricDataStream[R metric.MetricData](
 	ctx *yenstream.RunnerContext,
 	flushDuration time.Duration,
 	met metric.MetricStore[R],
-) *metricStreamImpl[R] {
-	return &metricStreamImpl[R]{
+) *metricDataStreamImpl[R] {
+	return &metricDataStreamImpl[R]{
 		flushDuration: flushDuration,
 		ctx:           ctx,
 		out:           yenstream.NewNodeOut(ctx),

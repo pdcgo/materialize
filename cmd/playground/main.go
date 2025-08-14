@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	"github.com/pdcgo/materialize/stat_process/backfill"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
 	"github.com/pdcgo/materialize/stat_process/gathering"
+	"github.com/pdcgo/materialize/stat_process/metric"
 	"github.com/pdcgo/materialize/stat_process/stat_db"
 	"github.com/pdcgo/materialize/stat_replica"
 	"github.com/pdcgo/shared/yenstream"
@@ -94,35 +96,34 @@ func main() {
 		badgedb,
 		exact,
 	)
+	shopDailyMetric := selling_metric.NewDailyShopMetric(badgedb, exact)
+	teamDailyMetric := selling_metric.NewDailyTeamMetric(badgedb, exact)
 
 	// running untuk sync ke postgres
-	go func() {
-	PP:
-		for {
-			select {
-			case <-ctx.Done():
-				break PP
-			default:
-				if source.GetStatus() == ReplicaMode {
-					break PP
-				}
-			}
-		}
+	// go func() {
+	// PP:
+	// 	for {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			break PP
+	// 		default:
+	// 			if source.GetStatus() == ReplicaMode {
+	// 				break PP
+	// 			}
+	// 		}
+	// 	}
 
-		err := pgGather.StartSync()
-		if err != nil {
-			panic(err)
-		}
-	}()
+	// 	err := pgGather.StartSync()
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// }()
 
 	err = yenstream.
 		NewRunnerContext(ctx).
 		CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
 			source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
 			sourcePipe := selling_pipeline.ExactOne(ctx, exact, source)
-
-			shopDailyMetric, shopDailyStream := selling_metric.NewShopDailyMetric(ctx, exact, badgedb, sourcePipe)
-			pgGather.AddMetric("daily_shop", shopDailyMetric)
 
 			dailyBalanceShopeepay := selling_pipeline.NewDailyShopeepayPipeline(
 				ctx,
@@ -131,13 +132,62 @@ func main() {
 				exact,
 			)
 
+			shopDailyStream := selling_metric.NewMetricStream(
+				ctx,
+				time.Second*5,
+				shopDailyMetric,
+				selling_pipeline.NewShopDailyPipeline(
+					ctx,
+					badgedb,
+					shopDailyMetric,
+					exact,
+				).
+					All(sourcePipe),
+			)
+
+			shopDailySink := shopDailyStream.
+				DataChanges(badgedb).
+				Via("saving", yenstream.NewMap(ctx, func(met *selling_metric.DailyShopMetricData) (*selling_metric.DailyShopMetricData, error) {
+					// raw, _ := json.Marshal(met)
+					// log.Println(string(raw))
+					err := pgGather.SaveItem(met)
+					return met, err
+				}))
+
+			teamDailyStream := selling_metric.NewMetricStream(
+				ctx,
+				time.Second*5,
+				teamDailyMetric,
+				selling_pipeline.NewDailyTeamPipeline(
+					ctx,
+					teamDailyMetric,
+				).
+					All(shopDailyStream.CounterChanges()),
+			)
+
+			teamDailySink := teamDailyStream.
+				DataChanges(badgedb).
+				Via("saving", yenstream.NewMap(ctx, func(met *selling_metric.DailyTeamMetricData) (*selling_metric.DailyTeamMetricData, error) {
+					raw, _ := json.Marshal(met)
+					log.Println(string(raw))
+					err := pgGather.SaveItem(met)
+					return met, err
+				}))
+
 			spayBalance := dailyBalanceShopeepay.
 				All(sourcePipe).
-				Via("metric spay", selling_metric.NewMetricStream(ctx, time.Second*5, shopeeBalanceMetric))
+				Via("metric spay", selling_metric.NewMetricDataStream(ctx, time.Second*5, shopeeBalanceMetric)).
+				Via("saving", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
+					err := pgGather.SaveItem(met)
+					return met, err
+				}))
 
 			return yenstream.NewFlatten(ctx, "flatten",
-				spayBalance,
-				shopDailyStream.
+				teamDailySink.
+					Via("silent", silent(ctx)),
+				spayBalance.
+					Via("silent", silent(ctx)),
+				shopDailySink.
 					Via("silent", silent(ctx)),
 			).
 				Via("log", yenstream.NewMap(ctx, func(data any) (any, error) {

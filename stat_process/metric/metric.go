@@ -24,10 +24,11 @@ type Preview[R MetricData] interface {
 type MetricStore[R MetricData] interface {
 	MetricFlush
 	Preview[R]
-
+	Output(data R) R
 	EmptyAccumulator() R
 	Merge(key string, merger func(acc R) R) error
 	Change(handle func(acc R))
+	Name() string
 }
 
 type defaultMetricStore[R MetricData] struct {
@@ -36,6 +37,14 @@ type defaultMetricStore[R MetricData] struct {
 	data   map[string]R
 	cacc   func() R
 	output func(r R) R
+}
+
+func (d *defaultMetricStore[R]) Name() string {
+	return d.cacc().Key()
+}
+
+func (d *defaultMetricStore[R]) Output(data R) R {
+	return d.output(data)
 }
 
 func (d *defaultMetricStore[R]) ToSlice() []R {
@@ -152,6 +161,7 @@ func (d *defaultMetricStore[R]) Merge(key string, merger func(acc R) R) error {
 	// var ok bool
 
 	acc, _ = d.data[key]
+	// log.Println(acc, ok, "asdasdasdasdasd")
 	// if !ok {
 	// 	acc, err = d.getItem(key)
 	// 	if err != nil {
@@ -162,6 +172,7 @@ func (d *defaultMetricStore[R]) Merge(key string, merger func(acc R) R) error {
 	// }
 
 	newacc := merger(acc)
+	// log.Println(newacc, ok, "after")
 	// if err != nil {
 	// 	return err
 	// }

@@ -111,7 +111,7 @@ func TestShopeepay(t *testing.T) {
 					all := pipe.All(source)
 
 					smetpipe := all.
-						Via("metric shopee", selling_metric.NewMetricStream(ctx, time.Second, smetric)).
+						Via("metric shopee", selling_metric.NewMetricChangeStream(ctx, time.Second, smetric)).
 						Via("testing stream", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
 
 							c += 1

@@ -89,6 +89,7 @@ func createDB() (*gorm.DB, error) {
 	err = db.AutoMigrate(
 		&metric.DailyShopeepayBalance{},
 		&selling_metric.DailyShopMetricData{},
+		&selling_metric.DailyTeamMetricData{},
 	)
 	if err != nil {
 		return db, err
