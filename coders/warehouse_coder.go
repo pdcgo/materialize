@@ -1,4 +1,4 @@
-package main
+package coders
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/pdcgo/materialize/stat_replica"
 )
 
-func registerCoder(ctx context.Context) error {
+func WarehouseCoder(ctx context.Context) error {
 	return stat_replica.RegisterCoderSources(ctx,
 		&stat_replica.CoderReg{
 			Meta:  &stat_replica.SourceMetadata{Table: "teams", Schema: "public"},

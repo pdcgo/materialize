@@ -6,7 +6,33 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/pdcgo/materialize/stat_replica"
 )
+
+func SideloadQuery(
+	ctx context.Context,
+	conn *pgx.Conn,
+	tablename string,
+	query string,
+	args ...any,
+) ([]*stat_replica.CdcMessage, error) {
+	var err error
+	var result []*stat_replica.CdcMessage
+	var rows pgx.Rows
+	rows, err = conn.Query(ctx, query, args...)
+	if err != nil {
+		return result, err
+	}
+
+	err = RowParser(ctx, tablename, rows, func(cddata *stat_replica.CdcMessage) {
+		result = append(result, cddata)
+	})
+	if err != nil {
+		return result, err
+	}
+
+	return result, err
+}
 
 type backfillTableImpl struct {
 	ctx    context.Context

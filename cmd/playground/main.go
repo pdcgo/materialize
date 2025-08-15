@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/pdcgo/materialize/backfill_pipeline"
+	"github.com/pdcgo/materialize/backfill_pipeline/backfill"
+	"github.com/pdcgo/materialize/coders"
 	"github.com/pdcgo/materialize/selling_metric"
 	"github.com/pdcgo/materialize/selling_pipeline"
-	"github.com/pdcgo/materialize/stat_process/backfill"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
 	"github.com/pdcgo/materialize/stat_process/gathering"
 	"github.com/pdcgo/materialize/stat_process/metric"
@@ -35,6 +36,7 @@ func main() {
 	ctx := context.Background()
 	ctx, cancel = context.WithCancel(ctx)
 	ctx = stat_replica.ContextWithCoder(ctx)
+	ctx = selling_metric.ContextWithMetricControl(ctx)
 
 	// Handle OS signals
 	sigChan := make(chan os.Signal, 1)
@@ -45,8 +47,7 @@ func main() {
 		fmt.Println("❌ Interrupt received. Shutting down...")
 		cancel()
 	}()
-
-	err = registerCoder(ctx)
+	err = coders.WarehouseCoder(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -57,10 +58,13 @@ func main() {
 		PublicationName: "stat_publication",
 		SlotTemporary:   true,
 	}
+
+	backfilCfg := &backfill.BackfillConfig{
+		StartTime: time.Now().AddDate(0, 0, -5),
+	}
+
 	source := NewCDCStream(ctx,
-		&backfill.BackfillConfig{
-			StartTime: time.Now().AddDate(0, -1, 0),
-		},
+		backfilCfg,
 		repcfg,
 		cdataChan,
 	)
@@ -70,7 +74,7 @@ func main() {
 		err = source.
 			Init().
 			Backfill().
-			Stream().
+			// Stream().
 			Err()
 
 		if err != nil {
@@ -86,6 +90,11 @@ func main() {
 	defer badgedb.Close()
 	defer badgedb.DropAll()
 
+	conn, err := backfill.ConnectProdDatabase(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	exact := exact_one.NewBadgeExactOne(ctx, badgedb)
 
 	// inisiasi metric
@@ -98,6 +107,7 @@ func main() {
 	)
 	shopDailyMetric := selling_metric.NewDailyShopMetric(badgedb, exact)
 	teamDailyMetric := selling_metric.NewDailyTeamMetric(badgedb, exact)
+	bankBalanceMetric := selling_metric.NewDailyBankBalance(badgedb)
 
 	// running untuk sync ke postgres
 	// go func() {
@@ -123,7 +133,14 @@ func main() {
 		NewRunnerContext(ctx).
 		CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
 			source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
-			sourcePipe := selling_pipeline.ExactOne(ctx, exact, source)
+
+			sideload := backfill_pipeline.NewSideload(ctx, conn, exact)
+
+			sloadsource := sideload.
+				All(source)
+
+			sourcePipe := selling_pipeline.
+				ExactOne(ctx, exact, sloadsource)
 
 			dailyBalanceShopeepay := selling_pipeline.NewDailyShopeepayPipeline(
 				ctx,
@@ -147,12 +164,11 @@ func main() {
 
 			shopDailySink := shopDailyStream.
 				DataChanges(badgedb).
-				Via("saving", yenstream.NewMap(ctx, func(met *selling_metric.DailyShopMetricData) (*selling_metric.DailyShopMetricData, error) {
-					// raw, _ := json.Marshal(met)
-					// log.Println(string(raw))
-					err := pgGather.SaveItem(met)
-					return met, err
-				}))
+				Via("saving", yenstream.NewMap(ctx,
+					func(met *selling_metric.DailyShopMetricData) (*selling_metric.DailyShopMetricData, error) {
+						err := pgGather.SaveItem(met)
+						return met, err
+					}))
 
 			teamDailyStream := selling_metric.NewMetricStream(
 				ctx,
@@ -168,21 +184,40 @@ func main() {
 			teamDailySink := teamDailyStream.
 				DataChanges(badgedb).
 				Via("saving", yenstream.NewMap(ctx, func(met *selling_metric.DailyTeamMetricData) (*selling_metric.DailyTeamMetricData, error) {
-					raw, _ := json.Marshal(met)
-					log.Println(string(raw))
+					// raw, _ := json.Marshal(met)
+					// log.Println(string(raw))
 					err := pgGather.SaveItem(met)
 					return met, err
 				}))
 
-			spayBalance := dailyBalanceShopeepay.
-				All(sourcePipe).
-				Via("metric spay", selling_metric.NewMetricDataStream(ctx, time.Second*5, shopeeBalanceMetric)).
+			spayBalance := selling_metric.
+				NewMetricStream(ctx, time.Second*5, shopeeBalanceMetric, dailyBalanceShopeepay.All(sourcePipe)).
+				DataChanges(badgedb).
 				Via("saving", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
 					err := pgGather.SaveItem(met)
 					return met, err
 				}))
 
+			bankBalance := selling_pipeline.
+				NewDailyBankPipeline(ctx, bankBalanceMetric).
+				All(teamDailyStream.CounterChanges())
+
+			bankBalanceSink := selling_metric.NewMetricStream(
+				ctx,
+				time.Second*5,
+				bankBalanceMetric,
+				bankBalance,
+			).
+				DataChanges(badgedb).
+				Via("save_bank_balance", yenstream.NewMap(ctx,
+					func(met *selling_metric.DailyBankBalance) (*selling_metric.DailyBankBalance, error) {
+						err := pgGather.SaveItem(met)
+						return met, err
+					}))
+
 			return yenstream.NewFlatten(ctx, "flatten",
+				bankBalanceSink.
+					Via("silent", silent(ctx)),
 				teamDailySink.
 					Via("silent", silent(ctx)),
 				spayBalance.

@@ -20,9 +20,10 @@ type CanFressness interface {
 }
 
 type postgresGatherImpl struct {
-	db      *gorm.DB
-	ctx     context.Context
-	metrics map[string]metric.MetricFlush
+	db        *gorm.DB
+	ctx       context.Context
+	metrics   map[string]metric.MetricFlush
+	ratelimit chan int
 }
 
 // AddMetric implements metric.MetricGather.
@@ -33,6 +34,21 @@ func (p *postgresGatherImpl) AddMetric(key string, metric metric.MetricFlush) {
 	p.metrics[key] = metric
 }
 func (p *postgresGatherImpl) SaveItem(acc any) error {
+	select {
+	case p.ratelimit <- 1:
+	case <-p.ctx.Done():
+		return nil
+	}
+
+	defer func() {
+		select {
+		case <-p.ratelimit:
+		case <-p.ctx.Done():
+			return
+		}
+
+	}()
+
 	facc, ok := acc.(CanFressness)
 	if !ok {
 		name := reflect.TypeOf(acc).Elem().Name()
@@ -90,6 +106,7 @@ func createDB() (*gorm.DB, error) {
 		&metric.DailyShopeepayBalance{},
 		&selling_metric.DailyShopMetricData{},
 		&selling_metric.DailyTeamMetricData{},
+		&selling_metric.DailyBankBalance{},
 	)
 	if err != nil {
 		return db, err
@@ -104,9 +121,10 @@ func NewPostgresGather(ctx context.Context) *postgresGatherImpl {
 		panic(err)
 	}
 	pggat := &postgresGatherImpl{
-		db:      db,
-		ctx:     ctx,
-		metrics: map[string]metric.MetricFlush{},
+		db:        db,
+		ctx:       ctx,
+		metrics:   map[string]metric.MetricFlush{},
+		ratelimit: make(chan int, 1),
 	}
 	return pggat
 }

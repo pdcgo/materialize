@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"log/slog"
+	"time"
 
-	"github.com/pdcgo/materialize/stat_process/backfill"
+	"github.com/pdcgo/materialize/backfill_pipeline/backfill"
+	"github.com/pdcgo/materialize/selling_metric"
 	"github.com/pdcgo/materialize/stat_replica"
 )
 
@@ -59,6 +61,11 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 	slog.Info("starting backfilling process")
 
 	var err error
+
+	control := selling_metric.GetMetricControl(c.ctx)
+	control.SetFreshness(time.Minute * 5)
+	defer control.SetFreshness(time.Second * 5)
+
 	c.status = BackfillMode
 	conn, err := backfill.ConnectProdDatabase(c.ctx)
 	if err != nil {
@@ -79,8 +86,15 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 		return c.setErr(err)
 	}
 
+	slog.Info("backfilling orders")
 	order := backfill.NewBackfillOrder(c.ctx, conn, c.cfg)
 	order.Start(func(cdata *stat_replica.CdcMessage) {
+		c.cdataChan <- cdata
+	})
+
+	slog.Info("backfilling order_adjustments")
+	orderadj := backfill.NewBackfillOrderAdj(c.ctx, conn, c.cfg)
+	orderadj.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
 
@@ -104,11 +118,6 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 		c.cdataChan <- cdata
 	})
 
-	orderadj := backfill.NewBackfillOrderAdj(c.ctx, conn, c.cfg)
-	orderadj.Start(func(cdata *stat_replica.CdcMessage) {
-		c.cdataChan <- cdata
-	})
-
 	expense := backfill.NewBackfillExpenseHist(c.ctx, conn, c.cfg)
 	expense.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
@@ -118,6 +127,7 @@ func (c *cdcStreamImpl) Backfill() CDCStream {
 	invres.Start(func(cdata *stat_replica.CdcMessage) {
 		c.cdataChan <- cdata
 	})
+	slog.Info("backfill seeding complete")
 
 	return c
 }

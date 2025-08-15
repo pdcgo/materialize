@@ -1,8 +1,10 @@
 package selling_metric
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
@@ -130,8 +132,12 @@ func (m *metricGather[R]) Process() {
 	out := m.out.C()
 	defer close(out)
 
-	flushd := time.NewTimer(m.flushDuration)
+	freshduration := time.Minute * 5
+	flushd := time.NewTimer(freshduration)
 	defer flushd.Stop()
+
+	// latest := time.Now()
+	control := GetMetricControl(m.ctx)
 
 Parent:
 	for {
@@ -142,9 +148,15 @@ Parent:
 			}
 
 		case <-flushd.C:
+
 			m.flushData(out)
-			flushd.Reset(m.flushDuration)
+			flushd.Reset(control.freshness)
+			// default:
+			// 	now := time.Now()
+			// 	diff := now.Sub(latest)
+			// 	if diff {}
 		}
+
 	}
 
 	m.flushData(out)
@@ -165,4 +177,26 @@ func (m *metricGather[R]) SetLabel(label string) {
 func (m *metricGather[R]) Via(label string, pipe yenstream.Pipeline) yenstream.Pipeline {
 	m.ctx.RegisterStream(label, m, pipe)
 	return pipe
+}
+
+var metricControlKey = "met_control_key"
+
+type MetricControl struct {
+	freshness time.Duration
+}
+
+func (mc *MetricControl) SetFreshness(n time.Duration) {
+	slog.Info("setting metric freshness", slog.Duration("duration", n))
+	mc.freshness = n
+}
+
+func ContextWithMetricControl(pctx context.Context) context.Context {
+	return context.WithValue(pctx, metricControlKey, &MetricControl{
+		freshness: time.Second * 5,
+	})
+}
+
+func GetMetricControl(ctx context.Context) *MetricControl {
+	data := ctx.Value(metricControlKey)
+	return data.(*MetricControl)
 }

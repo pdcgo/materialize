@@ -72,7 +72,7 @@ func (m *metricDataStreamImpl[R]) Via(label string, pipe yenstream.Pipeline) yen
 	return pipe
 }
 
-func NewMetricDataStream[R metric.MetricData](
+func NewMetricDataStreamBackup[R metric.MetricData](
 	ctx *yenstream.RunnerContext,
 	flushDuration time.Duration,
 	met metric.MetricStore[R],
