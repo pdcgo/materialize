@@ -132,12 +132,10 @@ func (m *metricGather[R]) Process() {
 	out := m.out.C()
 	defer close(out)
 
-	freshduration := time.Minute * 5
-	flushd := time.NewTimer(freshduration)
-	defer flushd.Stop()
+	control := GetMetricControl(m.ctx)
+	flushd := time.After(control.freshness)
 
 	// latest := time.Now()
-	control := GetMetricControl(m.ctx)
 
 Parent:
 	for {
@@ -147,10 +145,10 @@ Parent:
 				break Parent
 			}
 
-		case <-flushd.C:
+		case <-flushd:
 
 			m.flushData(out)
-			flushd.Reset(control.freshness)
+			flushd = time.After(control.freshness)
 			// default:
 			// 	now := time.Now()
 			// 	diff := now.Sub(latest)
@@ -198,5 +196,11 @@ func ContextWithMetricControl(pctx context.Context) context.Context {
 
 func GetMetricControl(ctx context.Context) *MetricControl {
 	data := ctx.Value(metricControlKey)
+	if data == nil {
+		slog.Warn("using default metric control")
+		return &MetricControl{
+			freshness: time.Second * 5,
+		}
+	}
 	return data.(*MetricControl)
 }

@@ -34,20 +34,20 @@ func (p *postgresGatherImpl) AddMetric(key string, metric metric.MetricFlush) {
 	p.metrics[key] = metric
 }
 func (p *postgresGatherImpl) SaveItem(acc any) error {
-	select {
-	case p.ratelimit <- 1:
-	case <-p.ctx.Done():
-		return nil
-	}
+	// select {
+	// case p.ratelimit <- 1:
+	// case <-p.ctx.Done():
+	// 	return nil
+	// }
 
-	defer func() {
-		select {
-		case <-p.ratelimit:
-		case <-p.ctx.Done():
-			return
-		}
+	// defer func() {
+	// 	select {
+	// 	case <-p.ratelimit:
+	// 	case <-p.ctx.Done():
+	// 		return
+	// 	}
 
-	}()
+	// }()
 
 	facc, ok := acc.(CanFressness)
 	if !ok {

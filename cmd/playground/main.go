@@ -132,7 +132,10 @@ func main() {
 	err = yenstream.
 		NewRunnerContext(ctx).
 		CreatePipeline(func(ctx *yenstream.RunnerContext) yenstream.Pipeline {
-			source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
+			// source := createLogStream(ctx, yenstream.NewChannelSource(ctx, cdataChan))
+			source := yenstream.NewChannelSource(ctx, cdataChan).Via("dummy", yenstream.NewMap(ctx, func(d any) (any, error) {
+				return d, nil
+			}))
 
 			sideload := backfill_pipeline.NewSideload(ctx, conn, exact)
 
@@ -183,20 +186,28 @@ func main() {
 
 			teamDailySink := teamDailyStream.
 				DataChanges(badgedb).
-				Via("saving", yenstream.NewMap(ctx, func(met *selling_metric.DailyTeamMetricData) (*selling_metric.DailyTeamMetricData, error) {
-					// raw, _ := json.Marshal(met)
-					// log.Println(string(raw))
-					err := pgGather.SaveItem(met)
-					return met, err
-				}))
+				// Via("filter", yenstream.NewFilter(ctx, func(met *selling_metric.DailyTeamMetricData) (bool, error) {
+				// 	if met.TeamID == 31 {
+				// 		return true, nil
+				// 	}
+
+				// 	return false, nil
+				// })).
+				// Via("log", debug_pipeline.NewLogFile(ctx, "test.stream")).
+				Via("saving", yenstream.NewMap(ctx,
+					func(met *selling_metric.DailyTeamMetricData) (*selling_metric.DailyTeamMetricData, error) {
+						err := pgGather.SaveItem(met)
+						return met, err
+					}))
 
 			spayBalance := selling_metric.
 				NewMetricStream(ctx, time.Second*5, shopeeBalanceMetric, dailyBalanceShopeepay.All(sourcePipe)).
 				DataChanges(badgedb).
-				Via("saving", yenstream.NewMap(ctx, func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
-					err := pgGather.SaveItem(met)
-					return met, err
-				}))
+				Via("saving", yenstream.NewMap(ctx,
+					func(met *metric.DailyShopeepayBalance) (*metric.DailyShopeepayBalance, error) {
+						err := pgGather.SaveItem(met)
+						return met, err
+					}))
 
 			bankBalance := selling_pipeline.
 				NewDailyBankPipeline(ctx, bankBalanceMetric).

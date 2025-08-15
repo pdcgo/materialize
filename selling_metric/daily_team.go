@@ -11,7 +11,7 @@ import (
 
 type DailyTeamMetricData struct {
 	Day               string  `json:"day" gorm:"primaryKey"`
-	TeamID            uint    `json:"team_id"`
+	TeamID            uint    `json:"team_id" gorm:"primaryKey"`
 	AdsSpentAmount    float64 `json:"ads_spent_amount"`
 	CancelOrderAmount float64 `json:"cancel_order_amount"`
 

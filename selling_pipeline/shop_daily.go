@@ -248,7 +248,7 @@ func (ds *DailyShopPipeline) Cancel(source yenstream.Pipeline) yenstream.Pipelin
 			if cdata.OldData != nil {
 				return false, nil
 			}
-			if cdata.SourceMetadata.Table != "order_timestatmps" {
+			if cdata.SourceMetadata.Table != "order_timestamps" {
 				return false, nil
 			}
 
@@ -290,135 +290,6 @@ func (ds *DailyShopPipeline) Cancel(source yenstream.Pipeline) yenstream.Pipelin
 			}
 			return cdata, nil
 		}))
-}
-
-func (ds *DailyShopPipeline) Ads(cdstream yenstream.Pipeline) yenstream.Pipeline {
-	ads := cdstream.
-		Via("process_ads", yenstream.NewFilter(ds.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
-			if cdata.SourceMetadata.Table != "ads_expense_histories" {
-				return false, nil
-			}
-
-			data := cdata.Data.(*models.AdsExpenseHistory)
-			olddata := &models.AdsExpenseHistory{}
-			var found bool
-			err := ds.exact.
-				Change(data).
-				Before(&found, olddata).
-				Save().
-				Err()
-
-			cdata.OldData = olddata
-			if olddata.ID == 0 {
-				cdata.OldData = nil
-			}
-
-			return true, err
-		})).
-		Via("add_metric_shop", yenstream.NewMap(ds.ctx, func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
-			var err error
-			var haveold, ok, samedate bool
-			var old, data *models.AdsExpenseHistory
-
-			old, haveold = cdata.OldData.(*models.AdsExpenseHistory)
-			data, ok = cdata.Data.(*models.AdsExpenseHistory)
-
-			if haveold {
-				samedate = old.At.Compare(data.At) == 0
-			} else {
-				samedate = true
-			}
-
-			if !ok {
-				return cdata, errors.New("data contain nil")
-			}
-
-			if !samedate && haveold {
-				newitem := &selling_metric.DailyShopMetricData{
-					ShopID:         data.MarketplaceID,
-					TeamID:         data.TeamID,
-					Day:            data.At.Local().Format("2006-01-02"),
-					AdsSpentAmount: data.Amount,
-				}
-
-				err = ds.metric.Merge(newitem.Key(), func(acc *selling_metric.DailyShopMetricData) *selling_metric.DailyShopMetricData {
-					if acc == nil {
-						return newitem
-					}
-					acc.AdsSpentAmount += newitem.AdsSpentAmount
-					return acc
-				})
-
-				if err != nil {
-					return cdata, err
-				}
-
-				olditem := &selling_metric.DailyShopMetricData{
-					ShopID:         old.MarketplaceID,
-					TeamID:         old.TeamID,
-					Day:            old.At.Local().Format("2006-01-02"),
-					AdsSpentAmount: old.Amount,
-				}
-
-				err = ds.metric.Merge(olditem.Key(), func(acc *selling_metric.DailyShopMetricData) *selling_metric.DailyShopMetricData {
-					if acc == nil {
-						return newitem
-					}
-					acc.AdsSpentAmount -= olditem.AdsSpentAmount
-					return acc
-				})
-
-				if err != nil {
-					return cdata, err
-				}
-
-				return cdata, nil
-			} else {
-
-				newitem := &selling_metric.DailyShopMetricData{
-					ShopID:         data.MarketplaceID,
-					TeamID:         data.TeamID,
-					Day:            data.At.Local().Format("2006-01-02"),
-					AdsSpentAmount: 0,
-				}
-
-				err = ds.metric.Merge(newitem.Key(), func(acc *selling_metric.DailyShopMetricData) *selling_metric.DailyShopMetricData {
-					if acc == nil {
-						newitem.AdsSpentAmount = data.Amount
-						return newitem
-					}
-
-					switch cdata.ModType {
-					case stat_replica.CdcBackfill:
-						if haveold {
-							return acc
-						} else {
-							acc.AdsSpentAmount += data.Amount
-						}
-					case stat_replica.CdcInsert:
-						acc.AdsSpentAmount = data.Amount
-					case stat_replica.CdcDelete:
-						acc.AdsSpentAmount -= data.Amount
-					case stat_replica.CdcUpdate:
-						var amount float64
-						if haveold {
-							amount = data.Amount - old.Amount
-						}
-						acc.AdsSpentAmount += amount
-					}
-
-					return acc
-				})
-
-				if err != nil {
-					return cdata, err
-				}
-			}
-
-			return cdata, nil
-		}))
-
-	return ads
 }
 
 func (ds *DailyShopPipeline) All(cdstream yenstream.Pipeline) yenstream.Pipeline {

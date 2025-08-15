@@ -42,6 +42,13 @@ func (dt *DailyTeamPipeline) All(dailyShop yenstream.Pipeline) yenstream.Pipelin
 			})
 			return &dd, err
 		}))
+		// Via("test", yenstream.NewMap(dt.ctx,
+		// 	func(met *selling_metric.DailyTeamMetricData) (*selling_metric.DailyTeamMetricData, error) {
+		// 		// if met.TeamID == 31 && met.Day == "2025-08-15" {
+		// 		// 	log.Println(met, met.WithdrawalAmount)
+		// 		// }
+		// 		return met, nil
+		// 	}))
 
 	return dailyTeam
 }
