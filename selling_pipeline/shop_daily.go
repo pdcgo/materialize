@@ -300,6 +300,7 @@ func (ds *DailyShopPipeline) All(cdstream yenstream.Pipeline) yenstream.Pipeline
 	order := ds.Order(cdstream)
 	ads := ds.Ads(cdstream)
 	wd := ds.Withdrawal(cdstream)
+	ware := ds.WarehouseFee(cdstream)
 
 	all := yenstream.NewFlatten(ds.ctx, "daily_shop_flatten",
 		wd,
@@ -309,6 +310,7 @@ func (ds *DailyShopPipeline) All(cdstream yenstream.Pipeline) yenstream.Pipeline
 		lost,
 		problem,
 		retur,
+		ware,
 	)
 	return all
 }

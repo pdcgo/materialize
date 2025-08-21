@@ -30,6 +30,8 @@ type DailyShopMetricData struct {
 	MpAdjustmentAmount  float64 `json:"mp_adjustment_amount"`
 	AdjOrderAmount      float64 `json:"adj_order_amount"`
 
+	WarehouseFeeAmount float64 `json:"warehouse_fee_amount"`
+
 	Freshness time.Time `json:"freshness"`
 }
 
@@ -60,6 +62,7 @@ func (d *DailyShopMetricData) Merge(dold interface{}) metric.MetricData {
 	d.WithdrawalAmount += old.WithdrawalAmount
 	d.MpAdjustmentAmount += old.MpAdjustmentAmount
 	d.AdjOrderAmount += old.AdjOrderAmount
+	d.WarehouseFeeAmount += old.WarehouseFeeAmount
 	return d
 }
 

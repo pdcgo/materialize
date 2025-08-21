@@ -96,11 +96,12 @@ type OrderTimestamp struct {
 }
 
 type InvOrderData struct {
-	InvID   uint    `json:"inv_id"`
-	OrderID uint    `json:"order_id"`
-	TeamID  uint    `json:"team_id"`
-	MpID    uint    `json:"mp_id"`
-	MpTotal float64 `json:"mp_total"`
+	InvID        uint    `json:"inv_id"`
+	OrderID      uint    `json:"order_id"`
+	TeamID       uint    `json:"team_id"`
+	MpID         uint    `json:"mp_id"`
+	WarehouseFee float64 `json:"warehouse_fee"`
+	MpTotal      float64 `json:"mp_total"`
 }
 
 func (o *InvOrderData) Key() string {

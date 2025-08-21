@@ -9,6 +9,14 @@ import (
 	"github.com/pdcgo/materialize/stat_process/metric"
 )
 
+type DailyTeamCost struct {
+	Day    string `json:"day" gorm:"primaryKey"`
+	TeamID uint   `json:"team_id" gorm:"primaryKey"`
+
+	WarehouseFeeAmount float64
+	CrossProductAmount float64
+}
+
 type DailyTeamMetricData struct {
 	Day               string  `json:"day" gorm:"primaryKey"`
 	TeamID            uint    `json:"team_id" gorm:"primaryKey"`
@@ -28,6 +36,8 @@ type DailyTeamMetricData struct {
 	WithdrawalAmount    float64 `json:"withdrawal_amount"`
 	MpAdjustmentAmount  float64 `json:"mp_adjustment_amount"`
 	AdjOrderAmount      float64 `json:"adj_order_amount"`
+
+	WarehouseFeeAmount float64 `json:"warehouse_fee_amount"`
 
 	Freshness time.Time `json:"freshness"`
 }
@@ -59,6 +69,7 @@ func (d *DailyTeamMetricData) Merge(dold interface{}) metric.MetricData {
 	d.WithdrawalAmount += old.WithdrawalAmount
 	d.MpAdjustmentAmount += old.MpAdjustmentAmount
 	d.AdjOrderAmount += old.AdjOrderAmount
+	d.WarehouseFeeAmount += old.WarehouseFeeAmount
 	return d
 }
 

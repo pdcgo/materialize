@@ -68,11 +68,12 @@ func ExactOne(ctx *yenstream.RunnerContext, exact exact_one.ExactlyOnce, source 
 				data := cdata.Data.(*models.Order)
 
 				inv := &models.InvOrderData{
-					InvID:   data.InvertoryTxID,
-					OrderID: data.ID,
-					TeamID:  data.TeamID,
-					MpID:    data.OrderMpID,
-					MpTotal: float64(data.OrderMpTotal),
+					InvID:        data.InvertoryTxID,
+					OrderID:      data.ID,
+					TeamID:       data.TeamID,
+					MpID:         data.OrderMpID,
+					WarehouseFee: data.WarehouseFee,
+					MpTotal:      float64(data.OrderMpTotal),
 				}
 
 				err = exact.Change(inv).Save().Err()
@@ -82,11 +83,12 @@ func ExactOne(ctx *yenstream.RunnerContext, exact exact_one.ExactlyOnce, source 
 
 				if data.InvertoryReturnTxID != 0 {
 					inv := &models.InvOrderData{
-						InvID:   data.InvertoryReturnTxID,
-						OrderID: data.ID,
-						TeamID:  data.TeamID,
-						MpID:    data.OrderMpID,
-						MpTotal: float64(data.OrderMpTotal),
+						InvID:        data.InvertoryReturnTxID,
+						OrderID:      data.ID,
+						TeamID:       data.TeamID,
+						MpID:         data.OrderMpID,
+						WarehouseFee: data.WarehouseFee,
+						MpTotal:      float64(data.OrderMpTotal),
 					}
 
 					err = exact.Change(inv).Save().Err()

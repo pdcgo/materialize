@@ -10,6 +10,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestDailyShopMerge(t *testing.T) {
+	acc := &selling_metric.DailyShopMetricData{}
+
+	met := &selling_metric.DailyShopMetricData{
+		WarehouseFeeAmount: 5000,
+	}
+	acc.Merge(met)
+
+	assert.Equal(t, 5000.00, acc.WarehouseFeeAmount)
+}
+
 func TestMatric(t *testing.T) {
 	var bdb db_mock.BadgeDBMock
 
