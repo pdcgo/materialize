@@ -99,7 +99,11 @@ func main() {
 
 	// inisiasi metric
 	// gather := metric.NewDefaultGather()
-	pgGather := gathering.NewPostgresGather(ctx)
+	db, err := gathering.CreateDB()
+	if err != nil {
+		panic(err)
+	}
+	pgGather := gathering.NewPostgresGather(ctx, db)
 
 	shopeeBalanceMetric := selling_metric.NewDailyShopeepayBalanceMetric(
 		badgedb,

@@ -26,6 +26,7 @@ func (s *Sideload) All(source yenstream.Pipeline) yenstream.Pipeline {
 	tampered := map[string]bool{
 		"inv_transactions":  true,
 		"order_adjustments": true,
+		"orders":            true,
 	}
 	normalSource := source.
 		Via("filter_tampered", yenstream.NewFilter(s.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -34,6 +35,8 @@ func (s *Sideload) All(source yenstream.Pipeline) yenstream.Pipeline {
 			}
 			return true, nil
 		}))
+
+	orderSource := s.OrderSideload(source)
 
 	orderadj := source.
 		Via("sideload_filter_ord_adjustment", yenstream.NewFilter(s.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
@@ -131,9 +134,20 @@ func (s *Sideload) All(source yenstream.Pipeline) yenstream.Pipeline {
 	return yenstream.NewFlatten(s.ctx, "flatenningSideload",
 		invtx,
 		orderadj,
+		orderSource,
 		normalSource,
 	)
 
+}
+
+func (s *Sideload) OrderSideload(source yenstream.Pipeline) yenstream.Pipeline {
+	return source.
+		Via("filter_order_sideload", yenstream.NewFilter(s.ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
+			if cdata.SourceMetadata.Table != "orders" {
+				return false, nil
+			}
+			return true, nil
+		}))
 }
 
 func (s *Sideload) getOrderByIDs(orderIDs []uint) ([]*stat_replica.CdcMessage, error) {

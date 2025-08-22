@@ -6,13 +6,18 @@ import (
 	"gorm.io/gorm"
 )
 
+type CreateAccount interface {
+	Create(tipe BalanceType, coa CoaCode, teamID uint, key AccountKey, name string) error
+}
+
 type createAccountImpl struct {
 	tx *gorm.DB
 }
 
 // Create implements CreateAccount.
-func (c *createAccountImpl) Create(tipe BalanceType, coa CoaCode, domainID uint, key AccountKey, name string) error {
+func (c *createAccountImpl) Create(tipe BalanceType, coa CoaCode, teamID uint, key AccountKey, name string) error {
 	acc := Account{
+		TeamID:      teamID,
 		Key:         key,
 		Name:        name,
 		Coa:         coa,

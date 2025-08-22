@@ -29,6 +29,7 @@ const (
 type JournalEntry struct {
 	ID            uint      `json:"id" gorm:"primarykey"`
 	AccountID     uint      `json:"account_id"`
+	TeamID        uint      `json:"team_id"`
 	TransactionID uint      `json:"transaction_id"`
 	EntryTime     time.Time `json:"entry_time"`
 	Debit         float64   `json:"debit"`
@@ -40,6 +41,7 @@ type JournalEntry struct {
 
 type Account struct {
 	ID          uint        `json:"id" gorm:"primarykey"`
+	TeamID      uint        `json:"team_id"`
 	Coa         CoaCode     `json:"coa"`
 	BalanceType BalanceType `json:"account_type"`
 	Key         AccountKey  `json:"key" gorm:"index:domain_key,unique"`

@@ -22,21 +22,30 @@ func (e *ErrEntryInvalid) Error() string {
 	return "journal entry invalid" + string(raw)
 }
 
-// var ErrEntryInvalid = errors.New("journal entry invalid")
+type EntryAccountPayload struct {
+	Key    AccountKey
+	TeamID uint
+}
 
 type CreateEntry interface {
 	Commit() CreateEntry
 	Desc(desc string) CreateEntry
 	TransactionID(txID uint) CreateEntry
-	// From(accID uint, amount float64) CreateEntry
-	To(key AccountKey, amount float64) CreateEntry
+	From(account *EntryAccountPayload, amount float64) CreateEntry
+	To(account *EntryAccountPayload, amount float64) CreateEntry
 	Err() error
 }
 
 type createEntryImpl struct {
 	tx      *gorm.DB
+	teamID  uint
 	entries map[uint]*JournalEntry
 	err     error
+}
+
+// From implements CreateEntry.
+func (c *createEntryImpl) From(account *EntryAccountPayload, amount float64) CreateEntry {
+	return c.To(account, amount*-1)
 }
 
 // Commit implements CreateEntry.
@@ -50,6 +59,8 @@ func (c *createEntryImpl) Commit() CreateEntry {
 
 	for _, entry := range c.entries {
 		entry.EntryTime = time.Now()
+		entry.TeamID = c.teamID
+
 		debit += entry.Debit
 		credit += entry.Credit
 
@@ -90,8 +101,8 @@ func (c *createEntryImpl) Err() error {
 }
 
 // To implements CreateEntry.
-func (c *createEntryImpl) To(key AccountKey, amount float64) CreateEntry {
-	acc, err := c.getAccount(key)
+func (c *createEntryImpl) To(account *EntryAccountPayload, amount float64) CreateEntry {
+	acc, err := c.getAccount(account)
 	if err != nil {
 		return c.setErr(err)
 	}
@@ -121,17 +132,22 @@ func (c *createEntryImpl) TransactionID(txID uint) CreateEntry {
 	return c
 }
 
-func (c *createEntryImpl) getAccount(key AccountKey) (*Account, error) {
+func (c *createEntryImpl) getAccount(accp *EntryAccountPayload) (*Account, error) {
 	var acc Account
 	var err error
 
-	err = c.tx.Model(&Account{}).Where("key = ?", key).Find(&acc).Error
+	err = c.tx.Model(&Account{}).
+		Where("key = ?", accp.Key).
+		Where("team_id = ?", accp.TeamID).
+		Find(&acc).
+		Error
+
 	if err != nil {
 		return &acc, err
 	}
 
 	if acc.ID == 0 {
-		return &acc, fmt.Errorf("account not found %s", key)
+		return &acc, fmt.Errorf("account not found %s in team %d", accp.Key, accp.TeamID)
 	}
 
 	return &acc, nil
@@ -152,9 +168,10 @@ func (c *createEntryImpl) setErr(err error) *createEntryImpl {
 	return c
 }
 
-func NewCreateEntry(tx *gorm.DB) CreateEntry {
+func NewCreateEntry(tx *gorm.DB, teamID uint) CreateEntry {
 	return &createEntryImpl{
 		tx:      tx,
+		teamID:  teamID,
 		entries: map[uint]*JournalEntry{},
 	}
 }

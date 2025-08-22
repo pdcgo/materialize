@@ -10,12 +10,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pdcgo/materialize/accounting_transaction/order_transaction"
 	"github.com/pdcgo/materialize/backfill_pipeline"
 	"github.com/pdcgo/materialize/backfill_pipeline/backfill"
 	"github.com/pdcgo/materialize/coders"
 	"github.com/pdcgo/materialize/selling_metric"
 	"github.com/pdcgo/materialize/selling_pipeline"
 	"github.com/pdcgo/materialize/stat_process/exact_one"
+	"github.com/pdcgo/materialize/stat_process/gathering"
+	"github.com/pdcgo/materialize/stat_process/models"
 	"github.com/pdcgo/materialize/stat_process/stat_db"
 	"github.com/pdcgo/materialize/stat_replica"
 	"github.com/pdcgo/shared/yenstream"
@@ -93,6 +96,12 @@ func main() {
 		panic(err)
 	}
 
+	// local docker database
+	gormdb, err := gathering.CreateDB()
+	if err != nil {
+		panic(err)
+	}
+
 	exact := exact_one.NewBadgeExactOne(ctx, badgedb)
 
 	err = yenstream.
@@ -127,6 +136,18 @@ func main() {
 			return yenstream.NewFlatten(ctx, "flatten",
 				orderPipe,
 			).
+				Via("testing entry",
+					yenstream.NewMap(ctx,
+						func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+							data := cdata.Data.(models.Order)
+
+							orderOps := order_transaction.NewOrderTransaction(gormdb)
+							orderOps.CreateOrder(&order_transaction.CreateOrderPayload{
+								TeamID: data.TeamID,
+							})
+
+							return cdata, nil
+						})).
 				Via("log", yenstream.NewMap(ctx, func(data any) (any, error) {
 					raw, err := json.Marshal(data)
 					slog.Info(string(raw))

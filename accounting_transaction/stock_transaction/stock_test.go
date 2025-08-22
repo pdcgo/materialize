@@ -33,30 +33,35 @@ func TestStockOps(t *testing.T) {
 				Coa:         accounting_core.ASSET,
 				BalanceType: accounting_core.DebitBalance,
 				Key:         accounting_core.StockPendingAccount,
+				TeamID:      1,
 			},
 			{
 				ID:          2,
 				Coa:         accounting_core.LIABILITY,
 				BalanceType: accounting_core.CreditBalance,
-				Key:         accounting_core.ShippingCostAccount,
+				Key:         accounting_core.ShippingPayableAccount,
+				TeamID:      1,
 			},
 			{
 				ID:          3,
 				Coa:         accounting_core.ASSET,
 				BalanceType: accounting_core.DebitBalance,
 				Key:         accounting_core.CashAccount,
+				TeamID:      1,
 			},
 			{
 				ID:          4,
 				Coa:         accounting_core.LIABILITY,
 				BalanceType: accounting_core.CreditBalance,
 				Key:         accounting_core.ShippingPayableAccount,
+				TeamID:      1,
 			},
 			{
 				ID:          5,
 				Coa:         accounting_core.LIABILITY,
 				BalanceType: accounting_core.CreditBalance,
 				Key:         accounting_core.SupplierPayableAccount,
+				TeamID:      1,
 			},
 		}
 		err := db.Save(&accounts).Error
@@ -120,13 +125,13 @@ func TestStockOps(t *testing.T) {
 								ID:          5,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.StockBrokenAmount,
+								Key:         accounting_core.StockBrokenAccount,
 							},
 							{
 								ID:          6,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.StockLostAmount,
+								Key:         accounting_core.StockLostAccount,
 							},
 							{
 								ID:          7,

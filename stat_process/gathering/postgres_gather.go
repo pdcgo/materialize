@@ -83,7 +83,7 @@ func (p *postgresGatherImpl) StartSync() error {
 
 // var _ metric.MetricGather = (*postgresGatherImpl)(nil)
 
-func createDB() (*gorm.DB, error) {
+func CreateDB() (*gorm.DB, error) {
 	var err error
 	host := getEnv("STAT_POSTGRES_HOST", "localhost")
 	user := getEnv("STAT_POSTGRES_USER", "user")
@@ -115,11 +115,11 @@ func createDB() (*gorm.DB, error) {
 	return db, err
 }
 
-func NewPostgresGather(ctx context.Context) *postgresGatherImpl {
-	db, err := createDB()
-	if err != nil {
-		panic(err)
-	}
+func NewPostgresGather(ctx context.Context, db *gorm.DB) *postgresGatherImpl {
+	// db, err := CreateDB()
+	// if err != nil {
+	// 	panic(err)
+	// }
 	pggat := &postgresGatherImpl{
 		db:        db,
 		ctx:       ctx,

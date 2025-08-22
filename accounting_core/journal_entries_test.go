@@ -60,11 +60,17 @@ func TestJournalEntries(t *testing.T) {
 		},
 		func(t *testing.T) {
 			err := db.Transaction(func(tx *gorm.DB) error {
-				entryCreate := accounting_core.NewCreateEntry(tx)
+				entryCreate := accounting_core.NewCreateEntry(tx, 1)
 
 				return entryCreate.
-					To(accounting_core.CashAccount, -1200).
-					To(accounting_core.StockPendingAccount, 1200).
+					To(&accounting_core.EntryAccountPayload{
+						Key:    accounting_core.CashAccount,
+						TeamID: 1,
+					}, -1200).
+					To(&accounting_core.EntryAccountPayload{
+						Key:    accounting_core.StockPendingAccount,
+						TeamID: 1,
+					}, 1200).
 					TransactionID(1).
 					Commit().
 					Err()
