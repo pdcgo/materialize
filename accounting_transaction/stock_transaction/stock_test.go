@@ -20,6 +20,7 @@ func TestStockOps(t *testing.T) {
 			&accounting_core.JournalEntry{},
 			&accounting_core.Label{},
 			&accounting_core.TransactionLabel{},
+			&accounting_core.AccountMonthlyBalance{},
 		)
 
 		assert.Nil(t, err)
@@ -32,35 +33,35 @@ func TestStockOps(t *testing.T) {
 				ID:          1,
 				Coa:         accounting_core.ASSET,
 				BalanceType: accounting_core.DebitBalance,
-				Key:         accounting_core.StockPendingAccount,
+				AccountKey:  accounting_core.StockPendingAccount,
 				TeamID:      1,
 			},
 			{
 				ID:          2,
 				Coa:         accounting_core.LIABILITY,
 				BalanceType: accounting_core.CreditBalance,
-				Key:         accounting_core.ShippingPayableAccount,
+				AccountKey:  accounting_core.ShippingPayableAccount,
 				TeamID:      1,
 			},
 			{
 				ID:          3,
 				Coa:         accounting_core.ASSET,
 				BalanceType: accounting_core.DebitBalance,
-				Key:         accounting_core.CashAccount,
+				AccountKey:  accounting_core.CashAccount,
 				TeamID:      1,
 			},
-			{
-				ID:          4,
-				Coa:         accounting_core.LIABILITY,
-				BalanceType: accounting_core.CreditBalance,
-				Key:         accounting_core.ShippingPayableAccount,
-				TeamID:      1,
-			},
+			// {
+			// 	ID:          4,
+			// 	Coa:         accounting_core.LIABILITY,
+			// 	BalanceType: accounting_core.CreditBalance,
+			// 	Key:         accounting_core.ShippingPayableAccount,
+			// 	TeamID:      1,
+			// },
 			{
 				ID:          5,
 				Coa:         accounting_core.LIABILITY,
 				BalanceType: accounting_core.CreditBalance,
-				Key:         accounting_core.SupplierPayableAccount,
+				AccountKey:  accounting_core.SupplierPayableAccount,
 				TeamID:      1,
 			},
 		}
@@ -116,54 +117,116 @@ func TestStockOps(t *testing.T) {
 					func(t *testing.T) func() error { // initating account
 						accounts := []*accounting_core.Account{
 							{
-								ID:          4,
+								AccountKey:  accounting_core.StockReadyAccount,
+								TeamID:      1,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.StockReadyAccount,
 							},
 							{
-								ID:          5,
+								AccountKey:  accounting_core.SuplierReceivableAccount,
+								TeamID:      1,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.StockBrokenAccount,
 							},
 							{
-								ID:          6,
+								AccountKey:  accounting_core.ReceivableAccount,
+								TeamID:      1,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.StockLostAccount,
 							},
 							{
-								ID:          7,
-								Coa:         accounting_core.ASSET,
-								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.PayableAccount,
+								AccountKey:  accounting_core.PayableAccount,
+								TeamID:      2,
+								Coa:         accounting_core.LIABILITY,
+								BalanceType: accounting_core.CreditBalance,
 							},
 							{
-								ID:          8,
+								AccountKey:  accounting_core.CashAccount,
+								TeamID:      2,
 								Coa:         accounting_core.ASSET,
 								BalanceType: accounting_core.DebitBalance,
-								Key:         accounting_core.ReceivableAccount,
 							},
+							// {
+							// 	AccountKey: ,
+							// },
 						}
 						err := db.Save(&accounts).Error
 						assert.Nil(t, err)
-						return nil
+						return func() error {
+							return db.Delete(&accounts).Error
+						}
 					},
 				},
 				func(t *testing.T) {
 					err := stockOps.AcceptStock(&stock_transaction.AcceptStockPayload{
 						TeamID:         1,
-						WarehouseID:    1,
+						WarehouseID:    2,
 						AcceptedAmount: 12000,
 						LostAmount:     3000,
 						BrokenAmount:   1000,
 						CodAmount:      2000,
 					})
 					assert.Nil(t, err)
+
 				},
 			)
 
+			moretest.Suite(t, "testing broken stock",
+				moretest.SetupListFunc{
+					func(t *testing.T) func() error { // populate account
+						accounts := []*accounting_core.Account{
+							{
+								AccountKey:  accounting_core.StockReadyAccount,
+								TeamID:      1,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+							},
+							{
+								AccountKey:  accounting_core.PayableAccount,
+								TeamID:      1,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+							},
+							{
+								AccountKey:  accounting_core.StockReadyAccount,
+								TeamID:      2,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+							},
+							{
+								AccountKey:  accounting_core.PayableAccount,
+								TeamID:      2,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+							},
+							{
+								AccountKey:  accounting_core.StockBrokenAccount,
+								TeamID:      2,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+							},
+						}
+						err := db.Save(&accounts).Error
+						assert.Nil(t, err)
+						return func() error {
+							return db.Delete(&accounts).Error
+						}
+					},
+				},
+				func(t *testing.T) {
+					err := stockOps.BrokenStock(&stock_transaction.BrokenStock{
+						TeamID:           1,
+						WarehouseID:      2,
+						PayableAmount:    9000,
+						NotPayableAmount: 1000,
+					})
+
+					assert.Nil(t, err)
+
+				},
+			)
+
+			// t.Error("testing ada receipt, warehouse id, ref id not implemented")
 		},
 	)
 

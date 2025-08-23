@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type CoaCode int
@@ -39,15 +41,50 @@ type JournalEntry struct {
 	Account *Account `json:"account"`
 }
 
+type JournalEntriesList []*JournalEntry
+
+func (entries JournalEntriesList) PrintJournalEntries(db *gorm.DB) error {
+	var err error
+	fmt.Println("=== Journal Entries ===")
+	for _, e := range entries {
+		e.Account = &Account{}
+		err = db.Model(&Account{}).First(e.Account, e.AccountID).Error
+		if err != nil {
+			return err
+		}
+		accountName := "Unknown"
+		if e.Account != nil {
+			accountName = fmt.Sprintf("%s TeamID %d (%s)", e.Account.AccountKey, e.Account.TeamID, e.Account.BalanceType)
+		}
+		fmt.Printf(
+			"[%s] Txn #%d | Account: %-20s | Debit: %10.2f | Credit: %10.2f | Desc: %s\n",
+			e.EntryTime.Format("2006-01-02 15:04"),
+			e.TransactionID,
+			accountName,
+			e.Debit,
+			e.Credit,
+			e.Desc,
+		)
+	}
+	fmt.Println("=======================")
+	return nil
+}
+
 type Account struct {
 	ID          uint        `json:"id" gorm:"primarykey"`
-	TeamID      uint        `json:"team_id"`
+	AccountKey  AccountKey  `json:"key" gorm:"index:team_key,unique"`
+	TeamID      uint        `json:"team_id" gorm:"index:team_key,unique"`
 	Coa         CoaCode     `json:"coa"`
 	BalanceType BalanceType `json:"account_type"`
-	Key         AccountKey  `json:"key" gorm:"index:domain_key,unique"`
-	Name        string      `json:"name"`
+
+	Name string `json:"name"`
 
 	Created time.Time `json:"created"`
+}
+
+// Key implements exact_one.ExactHaveKey.
+func (ac *Account) Key() string {
+	return fmt.Sprintf("accounting_core/%s/%d", ac.AccountKey, ac.TeamID)
 }
 
 func (ac *Account) SetAmountEntry(amount float64, entry *JournalEntry) error {
@@ -77,6 +114,15 @@ func (ac *Account) SetAmountEntry(amount float64, entry *JournalEntry) error {
 	}
 
 	return nil
+}
+
+type AccountMonthlyBalance struct {
+	ID            uint      `json:"id" gorm:"primarykey"`
+	Month         time.Time `json:"month" gorm:"index:account_journal,unique"`
+	AccountID     uint      `json:"account_id" gorm:"index:account_journal,unique"`
+	JournalTeamID uint      `json:"journal_team_id" gorm:"index:account_journal,unique"`
+	Debit         float64   `json:"debit"`
+	Credit        float64   `json:"credit"`
 }
 
 type TransactionType string

@@ -70,12 +70,15 @@ func (s *Sideload) All(source yenstream.Pipeline) yenstream.Pipeline {
 					}
 				}
 
-				scdatas, err := s.getOrderByIDs(orderIDs)
-				if err != nil {
-					return result, err
+				if len(orderIDs) != 0 {
+					scdatas, err := s.getOrderByIDs(orderIDs)
+					if err != nil {
+						return result, err
+					}
+
+					result = append(result, scdatas...)
 				}
 
-				result = append(result, scdatas...)
 				result = append(result, cdatas...)
 
 				return result, err

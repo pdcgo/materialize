@@ -3,9 +3,12 @@ package accounting_core
 type LabelKey string
 
 const (
-	TeamID        LabelKey = "team_id"
-	PaymentMethod LabelKey = "payment_method"
-	WarehouseID   LabelKey = "warehouse_id"
-	UserID        LabelKey = "user_id"
-	ShopID        LabelKey = "shop_id"
+	TeamIDLabel        LabelKey = "team_id"
+	PaymentMethodLabel LabelKey = "payment_method"
+	WarehouseIDLabel   LabelKey = "warehouse_id"
+	RefIDLabel         LabelKey = "ref_id"
+	SystemIDLabel      LabelKey = "system_id"
+	ReceiptLabel       LabelKey = "receipt"
+	UserIDLabel        LabelKey = "user_id"
+	ShopIDLabel        LabelKey = "shop_id"
 )

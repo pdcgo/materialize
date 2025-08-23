@@ -16,6 +16,7 @@ func TestJournalEntries(t *testing.T) {
 	var migrate moretest.SetupFunc = func(t *testing.T) func() error {
 		err := db.AutoMigrate(
 			&accounting_core.JournalEntry{},
+			&accounting_core.AccountMonthlyBalance{},
 		)
 
 		assert.Nil(t, err)

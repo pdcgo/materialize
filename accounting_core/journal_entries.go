@@ -12,8 +12,9 @@ import (
 var ErrEmptyEntry = errors.New("entry empty")
 
 type ErrEntryInvalid struct {
-	Debit  float64 `json:"debit"`
-	Credit float64 `json:"credit"`
+	Debit  float64            `json:"debit"`
+	Credit float64            `json:"credit"`
+	List   JournalEntriesList `json:"list"`
 }
 
 // Error implements error.
@@ -31,6 +32,7 @@ type CreateEntry interface {
 	Commit() CreateEntry
 	Desc(desc string) CreateEntry
 	TransactionID(txID uint) CreateEntry
+	Transaction(tx *Transaction) CreateEntry
 	From(account *EntryAccountPayload, amount float64) CreateEntry
 	To(account *EntryAccountPayload, amount float64) CreateEntry
 	Err() error
@@ -43,6 +45,19 @@ type createEntryImpl struct {
 	err     error
 }
 
+// Transaction implements CreateEntry.
+func (c *createEntryImpl) Transaction(tx *Transaction) CreateEntry {
+	if c.isEntryEmpty() {
+		return c.setErr(ErrEmptyEntry)
+	}
+
+	for _, entry := range c.entries {
+		entry.Desc = tx.Desc
+		entry.TransactionID = tx.ID
+	}
+	return c
+}
+
 // From implements CreateEntry.
 func (c *createEntryImpl) From(account *EntryAccountPayload, amount float64) CreateEntry {
 	return c.To(account, amount*-1)
@@ -53,7 +68,7 @@ func (c *createEntryImpl) Commit() CreateEntry {
 	if c.isEntryEmpty() {
 		return c.setErr(ErrEmptyEntry)
 	}
-	var entries []*JournalEntry
+	var entries JournalEntriesList
 
 	var debit, credit float64
 
@@ -67,17 +82,69 @@ func (c *createEntryImpl) Commit() CreateEntry {
 		entries = append(entries, entry)
 	}
 
+	// entries.PrintJournalEntries(c.tx)
+
 	// checking debit and credit balance
 	if debit != credit {
+
 		return c.setErr(&ErrEntryInvalid{
 			Debit:  debit,
 			Credit: credit,
+			List:   entries,
 		})
 	}
 
 	err := c.tx.Save(&entries).Error
 	if err != nil {
 		return c.setErr(err)
+	}
+
+	return c.
+		updateBalance(entries)
+}
+
+func (c *createEntryImpl) updateBalance(entries JournalEntriesList) *createEntryImpl {
+	var err error
+
+	for _, entry := range entries {
+		y, m, _ := entry.EntryTime.Date()
+		month := time.Time{}
+		month = month.AddDate(y, int(m), 0)
+
+		balance := &AccountMonthlyBalance{
+			Month:         month,
+			AccountID:     entry.AccountID,
+			JournalTeamID: entry.TeamID,
+			Debit:         entry.Debit,
+			Credit:        entry.Debit,
+		}
+		err = c.
+			tx.
+			Model(&AccountMonthlyBalance{}).
+			Where("month = ?", month).
+			Where("account_id = ?", balance.AccountID).
+			Where("journal_team_id = ?", balance.JournalTeamID).
+			Updates(map[string]interface{}{
+				"debit":  gorm.Expr("debit + ?", balance.Debit),
+				"credit": gorm.Expr("credit + ?", balance.Credit),
+			}).
+			Error
+
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				err = c.
+					tx.
+					Save(balance).
+					Error
+
+				if err != nil {
+					return c.setErr(err)
+				}
+			} else {
+				return c.setErr(err)
+			}
+		}
+
 	}
 
 	return c
@@ -137,7 +204,7 @@ func (c *createEntryImpl) getAccount(accp *EntryAccountPayload) (*Account, error
 	var err error
 
 	err = c.tx.Model(&Account{}).
-		Where("key = ?", accp.Key).
+		Where("account_key = ?", accp.Key).
 		Where("team_id = ?", accp.TeamID).
 		Find(&acc).
 		Error

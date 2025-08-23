@@ -5,6 +5,7 @@ type AccountKey string
 const (
 	CashAccount                 AccountKey = "cash"
 	SuplierCashAccount          AccountKey = "supplier_cash"
+	SuplierReceivableAccount    AccountKey = "supplier_receivable"
 	StockPendingAccount         AccountKey = "stock_pending"
 	StockReadyAccount           AccountKey = "stock_ready"
 	StockBrokenAccount          AccountKey = "stock_broken"

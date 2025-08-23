@@ -10,7 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pdcgo/materialize/accounting_transaction/order_transaction"
+	"github.com/pdcgo/materialize/accounting_core"
+	"github.com/pdcgo/materialize/accounting_transaction/stock_transaction"
 	"github.com/pdcgo/materialize/backfill_pipeline"
 	"github.com/pdcgo/materialize/backfill_pipeline/backfill"
 	"github.com/pdcgo/materialize/coders"
@@ -21,6 +22,7 @@ import (
 	"github.com/pdcgo/materialize/stat_process/models"
 	"github.com/pdcgo/materialize/stat_process/stat_db"
 	"github.com/pdcgo/materialize/stat_replica"
+	"github.com/pdcgo/shared/db_models"
 	"github.com/pdcgo/shared/yenstream"
 )
 
@@ -89,7 +91,7 @@ func main() {
 		panic(err)
 	}
 	defer badgedb.Close()
-	defer badgedb.DropAll()
+	// defer badgedb.DropAll()
 
 	conn, err := backfill.ConnectProdDatabase(ctx)
 	if err != nil {
@@ -98,6 +100,10 @@ func main() {
 
 	// local docker database
 	gormdb, err := gathering.CreateDB()
+	if err != nil {
+		panic(err)
+	}
+	err = accounting_core.GormAutoMigrate(gormdb)
 	if err != nil {
 		panic(err)
 	}
@@ -120,34 +126,89 @@ func main() {
 			sourcePipe := selling_pipeline.
 				ExactOne(ctx, exact, sloadsource)
 
-			orderPipe := sourcePipe.
-				Via("stock", yenstream.NewFilter(ctx, func(cdata *stat_replica.CdcMessage) (bool, error) {
-					if cdata.SourceMetadata.Table != "orders" {
-						return false, nil
-					}
+			stockOps := stock_transaction.NewStockTransaction(gormdb)
 
-					if cdata.OldData != nil {
-						return false, nil
-					}
+			stock := sourcePipe.
+				Via("stock", yenstream.NewFilter(ctx,
+					func(cdata *stat_replica.CdcMessage) (bool, error) {
+						if cdata.SourceMetadata.Table != "inv_transactions" {
+							return false, nil
+						}
 
-					return true, nil
-				}))
+						if cdata.OldData != nil {
+							return false, nil
+						}
+
+						data := cdata.Data.(*models.InvTransaction)
+						switch data.Type {
+						case db_models.InvTxRestock:
+							return true, nil
+						}
+
+						return false, nil
+					})).
+				Via("check_account", yenstream.NewMap(ctx,
+					func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+						data := cdata.Data.(*models.InvTransaction)
+						teamID := data.TeamID
+
+						keys := []accounting_core.AccountKey{
+							accounting_core.CashAccount,
+							accounting_core.StockPendingAccount,
+						}
+
+						for _, key := range keys {
+
+							acc := accounting_core.Account{
+								AccountKey:  key,
+								TeamID:      teamID,
+								Coa:         accounting_core.ASSET,
+								BalanceType: accounting_core.DebitBalance,
+								Name:        fmt.Sprintf("Team %d (%s)", teamID, key),
+								Created:     time.Now(),
+							}
+
+							found, err := exact.GetItemStruct(&acc)
+							if err != nil {
+								return cdata, err
+							}
+
+							if !found {
+
+								err = gormdb.Save(&acc).Error
+								// if err != nil {
+								// 	return cdata, err
+								// }
+								err = exact.Change(&acc).Save().Err()
+								if err != nil {
+									return cdata, err
+								}
+							}
+						}
+
+						return cdata, nil
+					})).
+				Via("stock ops", yenstream.NewMap(ctx,
+					func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
+						data := cdata.Data.(*models.InvTransaction)
+
+						err := stockOps.Restock(&stock_transaction.RestockPayload{
+							TeamID:        data.TeamID,
+							WarehouseID:   data.WarehouseID,
+							RestockAmount: data.Total,
+						})
+
+						if err != nil {
+							return cdata, err
+						}
+
+						return cdata, nil
+					}))
 
 			return yenstream.NewFlatten(ctx, "flatten",
-				orderPipe,
+				stock.
+					Via("silent", silent(ctx)),
 			).
-				Via("testing entry",
-					yenstream.NewMap(ctx,
-						func(cdata *stat_replica.CdcMessage) (*stat_replica.CdcMessage, error) {
-							data := cdata.Data.(models.Order)
-
-							orderOps := order_transaction.NewOrderTransaction(gormdb)
-							orderOps.CreateOrder(&order_transaction.CreateOrderPayload{
-								TeamID: data.TeamID,
-							})
-
-							return cdata, nil
-						})).
 				Via("log", yenstream.NewMap(ctx, func(data any) (any, error) {
 					raw, err := json.Marshal(data)
 					slog.Info(string(raw))

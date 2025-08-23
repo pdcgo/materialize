@@ -18,7 +18,7 @@ type createAccountImpl struct {
 func (c *createAccountImpl) Create(tipe BalanceType, coa CoaCode, teamID uint, key AccountKey, name string) error {
 	acc := Account{
 		TeamID:      teamID,
-		Key:         key,
+		AccountKey:  key,
 		Name:        name,
 		Coa:         coa,
 		BalanceType: tipe,

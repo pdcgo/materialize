@@ -58,19 +58,19 @@ func (o *orderTransactionImpl) CreateOrder(payload *CreateOrderPayload) error {
 			Create(&tran).
 			Labels([]*accounting_core.Label{
 				{
-					Key:   accounting_core.TeamID,
+					Key:   accounting_core.TeamIDLabel,
 					Value: fmt.Sprintf("%d", payload.TeamID),
 				},
 				{
-					Key:   accounting_core.WarehouseID,
+					Key:   accounting_core.WarehouseIDLabel,
 					Value: fmt.Sprintf("%d", payload.WarehouseID),
 				},
 				{
-					Key:   accounting_core.UserID,
+					Key:   accounting_core.UserIDLabel,
 					Value: fmt.Sprintf("%d", payload.UserID),
 				},
 				{
-					Key:   accounting_core.ShopID,
+					Key:   accounting_core.ShopIDLabel,
 					Value: fmt.Sprintf("%d", payload.ShopID),
 				},
 			}).
