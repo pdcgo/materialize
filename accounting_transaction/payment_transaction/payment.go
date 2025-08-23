@@ -6,6 +6,9 @@ import (
 )
 
 type PaymentPayload struct {
+	// FromAccountID uint    `json:"from_account_id"`
+	// ToAccountID   uint    `json:"to_account_id"`
+	// TeamID        uint    `json:"team_id"`
 	ToTeamID   uint    `json:"to_team_id"`
 	FromTeamID uint    `json:"from_team_id"`
 	Desc       string  `json:"desc"`
