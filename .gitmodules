@@ -1,0 +1,3 @@
+[submodule "pkgs/stream_engine"]
+	path = pkgs/stream_engine
+	url = https://github.com/wargasipil/stream_engine.git
