@@ -57,5 +57,9 @@ func WarehouseCoder(ctx context.Context) error {
 			Meta:  &stat_replica.SourceMetadata{Table: "order_timestamps", Schema: "public"},
 			Coder: &models.OrderTimestamp{},
 		},
+		&stat_replica.CoderReg{
+			Meta:  &stat_replica.SourceMetadata{Table: "invertory_histories", Schema: "public"},
+			Coder: &models.InvertoryHistory{},
+		},
 	)
 }

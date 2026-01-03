@@ -44,3 +44,20 @@ func (i *InvTransaction) Key() string {
 	}
 	return fmt.Sprintf("%s%d", meta.PrefixKey(), i.ID)
 }
+
+type InvertoryHistory struct {
+	ID uint `json:"id" gorm:"primarykey"`
+
+	RackID      uint            `json:"rack_id"`
+	TxID        uint            `json:"tx_id"`
+	InTxID      uint            `json:"in_tx_id"`
+	SkuID       db_models.SkuID `json:"sku_id"`
+	WarehouseID uint            `json:"warehouse_id"`
+	TeamID      uint            `json:"team_id"`
+	UserID      uint            `json:"user_id"`
+
+	Count    int       `json:"count"`
+	Price    float64   `json:"price"`
+	ExtPrice float64   `json:"ext_price"`
+	Created  time.Time `json:"created" gorm:"index"`
+}
